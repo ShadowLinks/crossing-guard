@@ -68,6 +68,17 @@ export async function getOrgUnitTree(oauth2Client: OAuth2Client): Promise<OrgUni
  * doesn't resolve to a real org unit, or is the synthetic "/" root this
  * app uses to mean "entire organization" (the Directory API has no single
  * org unit representing that - it's a customer-wide concept, not an OU).
+ *
+ * CONFIRMED GOTCHA (found 2026-08-14 via a real failed live rule create):
+ * the Directory API's `orgUnitId` field value comes back with a literal
+ * `id:` prefix baked in (e.g. `"id:02icddew0k08mor"`), but the Policy API's
+ * `policyQuery.orgUnit` field wants the bare token (`orgUnits/02icddew0k08mor`
+ * - no `id:`). Every Playground test that worked used a bare ID pulled from
+ * a policy's own `policyQuery.orgUnit`, never from this Directory API field
+ * directly, so this mismatch was never exercised until a real rule create
+ * through the app failed with a generic 400. Strip the prefix here so every
+ * caller of this function gets an ID that's actually usable with the Policy
+ * API, rather than making every caller remember to do it themselves.
  */
 export async function getOrgUnitByPath(
   oauth2Client: OAuth2Client,
@@ -90,5 +101,5 @@ export async function getOrgUnitByPath(
     throw new Error(`Google didn't return a usable org unit for "${orgUnitPath}".`);
   }
 
-  return { orgUnitId: data.orgUnitId, name: data.name };
+  return { orgUnitId: data.orgUnitId.replace(/^id:/, ""), name: data.name };
 }
