@@ -35,6 +35,9 @@ export interface AuditRecord {
   outcome: "created-live" | "manual-required" | "failed";
   detail?: string;
   consoleDeepLink?: string;
+  livePolicyNames?: string[];
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface RuleResult {
@@ -83,5 +86,9 @@ export const api = {
     request<RuleResult>("/api/rules/drive-trust", {
       method: "POST",
       body: JSON.stringify(payload)
+    }),
+  deleteRule: (id: string) =>
+    request<{ record: AuditRecord }>(`/api/rules/${encodeURIComponent(id)}`, {
+      method: "DELETE"
     })
 };

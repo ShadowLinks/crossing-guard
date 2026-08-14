@@ -57,6 +57,7 @@ export default function App() {
     <div className="app-shell">
       <header className="top-bar">
         <Link to="/" className="brand">
+          <img src="/logo.png" alt="" className="brand-logo" />
           Compliance Rule Manager
         </Link>
         <nav>

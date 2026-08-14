@@ -51,4 +51,9 @@ export interface AuditRecord {
   outcome: RuleOutcome;
   detail?: string;
   consoleDeepLink?: string;
+  /** Real Cloud Identity Policy resource name(s), set only for outcome "created-live". */
+  livePolicyNames?: string[];
+  /** Set once the live policy/policies above have been deleted through this app. */
+  deletedAt?: string;
+  deletedBy?: string;
 }

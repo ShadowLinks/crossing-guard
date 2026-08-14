@@ -52,3 +52,17 @@ export function appendAuditRecord(record: Omit<AuditRecord, "id" | "createdAt">)
 export function listAuditRecords(): AuditRecord[] {
   return readAll();
 }
+
+export function getAuditRecord(id: string): AuditRecord | undefined {
+  return readAll().find((r) => r.id === id);
+}
+
+/** Applies a partial update to one record in place (e.g. marking it deleted). Returns the updated record, or undefined if no record with that id exists. */
+export function updateAuditRecord(id: string, patch: Partial<AuditRecord>): AuditRecord | undefined {
+  const all = readAll();
+  const idx = all.findIndex((r) => r.id === id);
+  if (idx === -1) return undefined;
+  all[idx] = { ...all[idx], ...patch };
+  writeAll(all);
+  return all[idx];
+}

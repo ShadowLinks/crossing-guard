@@ -3,9 +3,9 @@ import { config } from "../config";
 import { requireAdmin } from "../auth/session";
 import { getAuthedClient } from "../auth/getClient";
 import { buildGmailComplianceManualSteps, buildTrustRuleManualSteps, ADMIN_CONSOLE_LINKS } from "../services/ruleBuilder";
-import { appendAuditRecord, listAuditRecords } from "../services/auditStore";
+import { appendAuditRecord, listAuditRecords, getAuditRecord, updateAuditRecord } from "../services/auditStore";
 import { getOrgUnitByPath } from "../services/directoryService";
-import { createLiveGmailDlpRule, LiveDlpApiError } from "../services/policyService";
+import { createLiveGmailDlpRule, deleteLivePolicies, LiveDlpApiError } from "../services/policyService";
 import { isLikelyEmailAddress } from "../services/emailUtil";
 import type { GmailRuleRequest, TrustRuleRequest } from "../types";
 
@@ -70,7 +70,8 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
       summary: manual.summary,
       outcome: "created-live",
       detail,
-      consoleDeepLink: ADMIN_CONSOLE_LINKS.rulesPage
+      consoleDeepLink: ADMIN_CONSOLE_LINKS.rulesPage,
+      livePolicyNames: result.policyNames
     });
 
     return res.json({ outcome: "created-live", manual, record, policyNames: result.policyNames });
@@ -125,4 +126,55 @@ rulesRouter.post("/drive-trust", requireAdmin, (req, res) => {
   });
 
   res.json({ outcome: "manual-required", manual, record });
+});
+
+// Deletes the real Google policy/policies behind a "created-live" audit
+// record. Records with no live policy (manual-only rules, or Drive trust
+// rules, which have no write API at all) have nothing to delete here -
+// those still have to be undone by hand in the Admin console, same as
+// creating them.
+rulesRouter.delete("/:id", requireAdmin, async (req, res) => {
+  const user = req.session.user!;
+  const record = getAuditRecord(req.params.id);
+
+  if (!record) {
+    return res.status(404).json({ error: "not_found", message: "No rule with that ID." });
+  }
+  if (!record.livePolicyNames || record.livePolicyNames.length === 0) {
+    return res.status(400).json({
+      error: "no_live_policy",
+      message: "This rule has no live Google policy attached (it was manual-only), so there's nothing for this app to delete. Remove it directly in the Admin console if needed."
+    });
+  }
+  if (record.deletedAt) {
+    return res.status(400).json({ error: "already_deleted", message: `Already deleted on ${record.deletedAt}.` });
+  }
+
+  try {
+    const client = getAuthedClient(user);
+    const result = await deleteLivePolicies(client, record.livePolicyNames);
+
+    if (result.failed.length > 0) {
+      const failedDetail = result.failed.map((f) => `${f.name}: ${f.message}`).join("; ");
+      return res.status(502).json({
+        error: "partial_delete_failure",
+        message: `Deleted ${result.deleted.length} of ${record.livePolicyNames.length} - the rest failed: ${failedDetail}. Re-run delete to retry the rest, or remove them by hand in the Admin console.`,
+        deleted: result.deleted,
+        failed: result.failed
+      });
+    }
+
+    const updated = updateAuditRecord(record.id, {
+      deletedAt: new Date().toISOString(),
+      deletedBy: user.email
+    });
+
+    return res.json({ record: updated });
+  } catch (err: any) {
+    console.error(`Failed to delete live policies for audit record ${record.id}:`, err);
+    return res.status(502).json({
+      error: "delete_failed",
+      message: err?.message ?? "Unexpected error calling Google to delete this rule."
+    });
+  }
 });

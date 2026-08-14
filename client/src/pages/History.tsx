@@ -10,13 +10,32 @@ const OUTCOME_LABEL: Record<AuditRecord["outcome"], string> = {
 export default function History() {
   const [records, setRecords] = useState<AuditRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
 
-  useEffect(() => {
+  function load() {
     api
       .history()
       .then(setRecords)
       .catch((err) => setError(err.message));
-  }, []);
+  }
+
+  useEffect(load, []);
+
+  async function handleDelete(id: string) {
+    setWorkingId(id);
+    setRowError((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await api.deleteRule(id);
+      setRecords((prev) => (prev ? prev.map((r) => (r.id === id ? res.record : r)) : prev));
+      setConfirmingId(null);
+    } catch (err: any) {
+      setRowError((prev) => ({ ...prev, [id]: err.message }));
+    } finally {
+      setWorkingId(null);
+    }
+  }
 
   return (
     <div className="page">
@@ -38,6 +57,7 @@ export default function History() {
               <th>Summary</th>
               <th>Requested by</th>
               <th>Status</th>
+              <th>Live rule</th>
             </tr>
           </thead>
           <tbody>
@@ -52,6 +72,40 @@ export default function History() {
                 <td>{r.createdBy}</td>
                 <td>
                   <span className={`status-pill status-${r.outcome}`}>{OUTCOME_LABEL[r.outcome]}</span>
+                </td>
+                <td>
+                  {!r.livePolicyNames || r.livePolicyNames.length === 0 ? (
+                    <span className="muted small">n/a</span>
+                  ) : r.deletedAt ? (
+                    <span className="muted small">
+                      Deleted {new Date(r.deletedAt).toLocaleDateString()} by {r.deletedBy ?? "unknown"}
+                    </span>
+                  ) : confirmingId === r.id ? (
+                    <span className="delete-confirm">
+                      <span className="muted small">
+                        Delete {r.livePolicyNames.length > 1 ? `${r.livePolicyNames.length} Google rules` : "this Google rule"}?
+                      </span>
+                      <button
+                        className="link-button danger"
+                        disabled={workingId === r.id}
+                        onClick={() => handleDelete(r.id)}
+                      >
+                        {workingId === r.id ? "Deleting..." : "Confirm delete"}
+                      </button>
+                      <button
+                        className="link-button"
+                        disabled={workingId === r.id}
+                        onClick={() => setConfirmingId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button className="link-button danger" onClick={() => setConfirmingId(r.id)}>
+                      Delete
+                    </button>
+                  )}
+                  {rowError[r.id] && <div className="banner banner-error small">{rowError[r.id]}</div>}
                 </td>
               </tr>
             ))}

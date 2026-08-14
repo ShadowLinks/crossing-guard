@@ -209,6 +209,48 @@ function unwrapCreateResult(data: any): { policyName: string; pending: boolean }
   throw new LiveDlpApiError("Google accepted the request but returned no policy or operation name.");
 }
 
+export interface DeleteLiveDlpResult {
+  deleted: string[];
+  failed: { name: string; message: string }[];
+}
+
+/**
+ * Deletes one or more Gmail DLP policies by resource name (e.g.
+ * "policies/akajj264..."). Unlike `createLiveGmailDlpRule`, this doesn't
+ * throw on a per-policy failure - it deletes what it can and reports the
+ * rest, since a two-leg rule (see `planGmailBlockRules`) should still
+ * remove whichever half succeeds rather than leaving both in place because
+ * one delete failed (e.g. because it was already removed by someone else
+ * directly in the Admin console).
+ */
+export async function deleteLivePolicies(
+  oauth2Client: OAuth2Client,
+  policyNames: string[]
+): Promise<DeleteLiveDlpResult> {
+  const cloudidentity = google.cloudidentity({ version: POLICY_API_VERSION, auth: oauth2Client });
+  const deleted: string[] = [];
+  const failed: { name: string; message: string }[] = [];
+
+  for (const name of policyNames) {
+    try {
+      await cloudidentity.policies.delete({ name });
+      deleted.push(name);
+    } catch (err: any) {
+      // A 404 here just means it's already gone (e.g. deleted by hand in
+      // the Admin console since this app created it) - treat that as
+      // success, not a failure to report.
+      const status = err?.code ?? err?.response?.status;
+      if (status === 404) {
+        deleted.push(name);
+      } else {
+        failed.push({ name, message: describeGoogleApiError(err) ?? "Unknown error" });
+      }
+    }
+  }
+
+  return { deleted, failed };
+}
+
 export interface LiveDlpResult {
   policyNames: string[];
   pending: boolean;

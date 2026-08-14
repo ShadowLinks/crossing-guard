@@ -10,6 +10,7 @@ export default function Login({ error }: { error: string | null }) {
   return (
     <div className="centered">
       <div className="card login-card">
+        <img src="/logo.png" alt="" className="login-logo" />
         <h1>Compliance Rule Manager</h1>
         <p>Create Gmail compliance rules and Google Drive trust rules for your organization, scoped by OU.</p>
         {error && <div className="banner banner-error">{ERROR_MESSAGES[error] ?? "Sign-in failed. Please try again."}</div>}
