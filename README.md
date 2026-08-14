@@ -9,7 +9,7 @@
 An internal web app so IT staff can create Google Workspace compliance rules without hunting through the
 Admin console menus: sign in with a Google Workspace admin account, pick an org unit, and generate
 
-1. a **Gmail rule** blocking mail internal&rarr;internal or internal&rarr;external, and/or
+1. a **Gmail rule** blocking mail internal&rarr;internal, internal&rarr;external, or external&rarr;internal, and/or
 2. a **Drive trust rule** blocking (or limiting) sharing files outside your organization,
 
 both scoped to a specific OU.

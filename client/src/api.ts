@@ -17,7 +17,7 @@ export interface OrgUnitNode {
   children: OrgUnitNode[];
 }
 
-export type MailDirection = "internal-internal" | "internal-external";
+export type MailDirection = "internal-internal" | "internal-external" | "external-internal";
 export type TrustRuleScope = "block-all-external" | "allow-only-trusted-domains";
 
 export interface ManualSteps {

@@ -57,6 +57,17 @@ export default function GmailRuleWizard({ liveDlpEnabled }: { liveDlpEnabled: bo
               <p>Block mail sent from an address on your domain to an address outside your domain.</p>
             </div>
           </label>
+          <label className={`radio-option ${direction === "external-internal" ? "radio-option-selected" : ""}`}>
+            <input
+              type="radio"
+              checked={direction === "external-internal"}
+              onChange={() => setDirection("external-internal")}
+            />
+            <div>
+              <strong>External &rarr; Internal</strong>
+              <p>Block mail sent from an address outside your domain to an address on your domain.</p>
+            </div>
+          </label>
           <label className={`radio-option ${direction === "internal-internal" ? "radio-option-selected" : ""}`}>
             <input
               type="radio"

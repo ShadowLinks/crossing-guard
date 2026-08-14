@@ -21,7 +21,7 @@ export interface OrgUnitNode {
   children: OrgUnitNode[];
 }
 
-export type MailDirection = "internal-internal" | "internal-external";
+export type MailDirection = "internal-internal" | "internal-external" | "external-internal";
 
 export interface GmailRuleRequest {
   orgUnitPath: string;

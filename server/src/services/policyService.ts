@@ -50,7 +50,12 @@ export async function createLiveGmailDlpRule(
     throw new LiveDlpApiError("Live DLP API creation is disabled (ENABLE_LIVE_DLP_API=false).");
   }
 
-  const directionLabel = req.direction === "internal-internal" ? "Internal to internal" : "Internal to external";
+  const DIRECTION_META: Record<GmailRuleRequest["direction"], { label: string; triggerType: string }> = {
+    "internal-internal": { label: "Internal to internal", triggerType: "INTERNAL_RECEIVING" },
+    "internal-external": { label: "Internal to external", triggerType: "OUTBOUND" },
+    "external-internal": { label: "External to internal", triggerType: "INBOUND" }
+  };
+  const { label: directionLabel, triggerType } = DIRECTION_META[req.direction];
 
   // Best-effort payload shape per Google's documented Policy resource
   // (policyQuery scoped to an OrgUnit + a named setting/value pair). See
@@ -69,7 +74,7 @@ export async function createLiveGmailDlpRule(
             description: req.description ?? `Created by Compliance Rule Manager for ${req.orgUnitPath}`,
             enabled: true,
             trigger: {
-              triggerType: req.direction === "internal-internal" ? "INTERNAL_RECEIVING" : "OUTBOUND"
+              triggerType
             },
             action: {
               actionType: "REJECT_MESSAGE"
