@@ -26,19 +26,23 @@ research into Google Workspace's public APIs.
   reached the rule wizards, which exercises the OAuth flow, the admin-role check, and OU-tree browsing against
   real data - those three pieces are now confirmed working, not just type-checked.
 - **The optional live DLP rule creation path** (`ENABLE_LIVE_DLP_API=true`) calls a Google API that was roughly
-  two months old at the time this was written, with thin public documentation. *Update (2026-08-14):* real
-  testing against it turned up and fixed a wrong field shape (using Google's own how-to guide), and then - after
-  an incorrect intermediate conclusion that Gmail DLP rules couldn't block mail at all, based on one Admin
-  console screenshot that happened to omit the option - a real rule read back from this district's own tenant
-  confirmed the actual block action shape: `action.gmailAction.blockContent.actionParams` with
-  `applyInternalMessages` / `applyExternalMessages` booleans, combined with the send/receive trigger to express
-  a direction. That's a real, confirmed shape, not a guess. The one remaining guess is the CEL condition sent
-  when there's no content to match on (`condition.contentCondition: "true"`) - a plausible, syntactically valid
-  "match everything" expression, chosen specifically because guessing wrong there fails loudly (Google rejects
-  bad CEL with a 400) rather than silently creating a broader rule than intended. If that call fails for any
-  reason, the app automatically falls back to the guided manual/deep-link flow rather than leaving you stuck.
-  The Drive trust rule has no write API at all and always goes through the manual flow. See the comment at the
-  top of `server/src/services/policyService.ts` for the full detail.
+  two months old at the time this was written, with thin public documentation. *Update (2026-08-14):* every
+  field this app sends is now confirmed against this district's real tenant, not guessed - reached via an
+  iterative process of creating and reading back real test rules through OAuth Playground (using the app's own
+  OAuth scope). Along the way: a wrong field shape was found and fixed against Google's own how-to guide; an
+  incorrect intermediate conclusion that Gmail DLP rules couldn't block mail at all (based on one Admin console
+  screenshot that happened to omit the option) was corrected after reading back a real block rule; several
+  guessed CEL "match everything" conditions (`"true"`, `all_headers.matches('.*')`, `all_headers.contains('')`)
+  were each rejected by Google with clear errors (two failed to parse, one parsed but was rejected as an empty
+  match) until testing confirmed this API requires a genuine, non-empty content condition and that
+  `all_headers.contains('@')` satisfies it while still matching virtually all real mail; and two fields
+  (`ruleTypeMetadata.dlpRuleMetadata.alertSeverity`, `action.alertCenterAction: {}`) turned out to be required,
+  not optional console defaults, discovered when omitting them produced a generic, unhelpful 400 error. Testing
+  also confirmed this API has no duplicate protection - sending the same request twice creates two separate
+  active rules. If the live call fails for any reason, the app automatically falls back to the guided
+  manual/deep-link flow rather than leaving you stuck. The Drive trust rule has no write API at all and always
+  goes through the manual flow. See the comment at the top of `server/src/services/policyService.ts` for the
+  full confirmed schema.
 - No independent security review or penetration test has been performed. The session handling, admin-role
   gate, and OAuth flow follow standard, well-established patterns, but "written by AI following best
   practices" is not a substitute for your own security review before this touches a production identity

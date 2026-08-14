@@ -36,14 +36,18 @@ it's more limited than the Admin console UI itself:
 **What this means in the app right now:** the Drive trust rule always goes through the guided manual/deep-link
 flow (no API exists for it at all). The Gmail rule defaults to the same guided manual flow, but can optionally
 create the rule live via the `ENABLE_LIVE_DLP_API` flag (`server/.env`) - the app fills in every value and
-calls Google directly, falling back automatically to the manual flow if the live call fails for any reason. The
-request shape (which org unit, which direction, and the actual block action) was confirmed against this
-district's real tenant; the one part that's still a best-effort-but-safe guess is the CEL "match everything"
-condition (`condition.contentCondition: "true"`) used because this app blocks by direction, not by content -
-see the comment at the top of `server/src/services/policyService.ts` for exactly what's confirmed vs. guessed,
-and why a wrong guess there fails loudly instead of silently creating too broad a rule. Recommend leaving the
-flag off until you've tested it against a low-stakes OU and confirmed the resulting rule in the Admin console
-(Security &rarr; Data protection &rarr; Rules) matches what you expected.
+calls Google directly, falling back automatically to the manual flow if the live call fails for any reason.
+Every field in the request (org unit, direction, the block action, and the required rule metadata) was
+confirmed against this district's real tenant on 2026-08-14 - not guessed - by creating and reading back real
+test rules through OAuth Playground. One notable finding along the way: this API rejects a tautological/empty
+match condition outright (it requires a genuine, non-empty content condition, being a *Data Loss Prevention*
+API at heart), so a direction-only block uses `all_headers.contains('@')` as a practical "match essentially all
+real mail" condition, since every email's headers contain an address with an `@` in it. See the comment at the
+top of `server/src/services/policyService.ts` for the full confirmed schema and the reasoning behind that
+condition. Also confirmed: this API has no duplicate protection - an identical request sent twice creates two
+separate active rules, not an error. Recommend testing the flag against a low-stakes OU for each direction and
+confirming the resulting rule in the Admin console (Security &rarr; Data protection &rarr; Rules) before
+turning it on for real OUs.
 
 A note on **GAM** (the popular open-source Workspace admin CLI): its changelog claims DLP create/update/delete
 support was added around the same time as Google's API update, but GAM's own command reference still only

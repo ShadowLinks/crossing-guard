@@ -5,50 +5,56 @@ import type { GmailRuleRequest, MailDirection } from "../types";
 
 /**
  * Live Gmail DLP rule creation via the Cloud Identity Policy API
- * (`cloudidentity.googleapis.com`, `policies.create`).
+ * (`cloudidentity.googleapis.com`, `policies.create`, `v1`).
  *
- * WHERE THIS SCHEMA CAME FROM: Google's own how-to guide confirmed the
- * envelope (`customer`, `policyQuery.orgUnit` as a string, `setting.type`).
- * The part that matters most here - how to make the rule actually BLOCK
- * mail, and how to scope that to internal/external - was not published
- * anywhere. It was confirmed on 2026-08-14 by reading back a real rule
- * (a manually-created "test" rule with a block action) from this district's
- * own tenant via `GET .../v1beta1/policies/{id}`, which returned:
+ * EVERY FIELD BELOW IS CONFIRMED, NOT GUESSED. This was reverse-engineered
+ * on 2026-08-14 by creating and reading back real test rules against this
+ * district's own tenant via OAuth Playground (using the app's own
+ * `cloud-identity.policies` scope), one field at a time:
  *
- *   "action": {
- *     "gmailAction": {
- *       "blockContent": {
- *         "actionParams": {
- *           "applyInternalMessages": true,
- *           "applyExternalMessages": true
- *         }
- *       }
- *     }
- *   }
+ *   - `customer` / `policyQuery.orgUnit` (string, `orgUnits/{id}`) /
+ *     `setting.type` ("settings/rule.dlp") - from Google's public how-to
+ *     guide, confirmed working.
+ *   - `action.gmailAction.blockContent.actionParams.applyInternalMessages` /
+ *     `applyExternalMessages` (independent booleans) - confirmed by reading
+ *     back a real block rule created via the Admin console UI. Combined
+ *     with the trigger (send vs. receive), these express a direction:
+ *       internal -> internal : trigger = send,    apply internal only
+ *       internal -> external : trigger = send,    apply external only
+ *       external -> internal : trigger = receive, apply external only
+ *   - `ruleTypeMetadata.dlpRuleMetadata.alertSeverity` and
+ *     `action.alertCenterAction: {}` - REQUIRED, not optional console
+ *     defaults as first assumed. Omitting them produces a generic
+ *     `INVALID_ARGUMENT` with no field-level detail at all - confirmed by
+ *     testing with and without them, all other fields held constant.
+ *   - `condition.contentCondition` - this API rejects a tautological/empty
+ *     condition outright (`"true"`, `all_headers.matches('.*')`, and
+ *     `all_headers.contains('')` were all tried and rejected - the first
+ *     two fail to parse as unrecognized syntax, the third parses but is
+ *     rejected as an invalid empty match). It only accepts a genuine,
+ *     non-empty content match. Since this app blocks by direction, not by
+ *     content, it uses `all_headers.contains('@')` - every real email's
+ *     headers include a From/To address, and every address contains `@`,
+ *     so this matches virtually all real mail while still being the kind
+ *     of real, non-empty condition the API requires. Confirmed working
+ *     end-to-end (create + read-back) against this tenant.
  *
- * That's a real, confirmed shape - not a guess. `applyInternalMessages` /
- * `applyExternalMessages` are independent booleans, combined with the
- * trigger (send vs. receive) to express a direction:
- *   - internal -> internal : trigger = send,    apply internal only
- *   - internal -> external : trigger = send,    apply external only
- *   - external -> internal : trigger = receive, apply external only
+ * `policies.create` returns a long-running Operation, not the Policy
+ * directly - in every real test here it came back with `done: true` and
+ * the created Policy under `response` immediately (see the handling
+ * below), which is why this treats immediate completion as the norm.
  *
- * ONE PIECE IS STILL A BEST-EFFORT GUESS: `condition.contentCondition`.
- * The real example we read back used a content match
- * (`all_headers.contains('testemail@gmail.com')`) because that test rule
- * was about a specific address, not a direction. This app isn't doing
- * content matching at all - it wants "block every message this
- * trigger/orgUnit/action combination already selects" - so it sends the
- * CEL literal `"true"` as a permissive, no-additional-filter condition.
- * This is a syntactically-reasonable guess, and importantly a SAFE one:
- * if Google rejects unfamiliar CEL, it fails loudly with a 400 (caught
- * below and turned into a fallback to the manual flow) rather than
- * silently creating a broader rule than intended - the condition can only
- * narrow what the action+trigger+orgUnit already scope, never widen it.
- *
- * Also confirmed while investigating this: OAuth Playground's discovery
- * panel shows the same `policies.*` methods exist under the GA `v1` path,
- * not just `v1beta1`. This app calls `v1`.
+ * OPERATIONAL NOTE, also confirmed by testing: this API has no built-in
+ * duplicate protection. Sending the exact same create request twice
+ * creates two separate, independently-active policies, not an error or a
+ * no-op. The "Create rule" button already disables itself while a request
+ * is in flight (see GmailRuleWizard.tsx), which covers an accidental
+ * double-click, but there's still no server-side guard against a genuine
+ * repeat submission (e.g. the admin re-clicking after a slow response, or
+ * resubmitting the form later for a route that was already created). If
+ * that turns out to matter in practice, check the audit log for a recent
+ * identical request before calling this, rather than relying on Google to
+ * reject it.
  */
 
 const POLICY_API_VERSION = "v1";
@@ -127,10 +133,16 @@ export async function createLiveGmailDlpRule(
             displayName,
             state: "ACTIVE",
             triggers: [mapping.trigger],
+            ruleTypeMetadata: {
+              dlpRuleMetadata: {
+                alertSeverity: "LOW"
+              }
+            },
             condition: {
-              contentCondition: "true"
+              contentCondition: "all_headers.contains('@')"
             },
             action: {
+              alertCenterAction: {},
               gmailAction: {
                 blockContent: {
                   actionParams: {
