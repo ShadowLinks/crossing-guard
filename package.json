@@ -1,0 +1,17 @@
+{
+  "name": "compliance-rule-manager",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Internal web app for LCPS IT admins to create Google Workspace Gmail compliance rules and Drive trust rules, scoped by org unit, via Sign in with Google.",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build --workspace client && npm run build --workspace server",
+    "start": "npm run start --workspace server",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client"
+  }
+}

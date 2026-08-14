@@ -1,0 +1,54 @@
+# -----------------------------------------------------------------------
+# Example nginx reverse-proxy config for Compliance Rule Manager.
+#
+# Copy this to /etc/nginx/sites-available/compliance-app, edit the
+# server_name and certificate paths below, then enable it:
+#
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/compliance-app
+#   sudo ln -s /etc/nginx/sites-available/compliance-app /etc/nginx/sites-enabled/
+#   sudo nginx -t
+#   sudo systemctl reload nginx
+#
+# This terminates TLS using your district's existing wildcard certificate
+# and proxies everything to the Node app running on 127.0.0.1:3000 (see
+# deploy/compliance-app.service). The Node app never needs to see the raw
+# TLS certificate itself.
+# -----------------------------------------------------------------------
+
+# Redirect all plain HTTP to HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name compliance.lcps.k12.va.us;   # <-- change to your real hostname
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name compliance.lcps.k12.va.us;   # <-- change to your real hostname
+
+    # --- Wildcard certificate (see SETUP.md "Installing your wildcard SSL
+    # certificate" section for exactly where to put these files and how to
+    # lock down their permissions). ---
+    ssl_certificate     /etc/ssl/private/lcps-wildcard/fullchain.pem;
+    ssl_certificate_key /etc/ssl/private/lcps-wildcard/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Reasonable size limit; the app doesn't handle uploads.
+    client_max_body_size 1m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Session cookies rely on the app trusting this proxy - the app's
+        # `trust proxy` setting (server/src/index.ts) is already set for this.
+    }
+}

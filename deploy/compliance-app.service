@@ -1,0 +1,29 @@
+# -----------------------------------------------------------------------
+# systemd unit for Compliance Rule Manager.
+#
+# Copy to /etc/systemd/system/compliance-app.service, edit the paths/user
+# below if you didn't follow SETUP.md exactly, then:
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now compliance-app
+#   sudo systemctl status compliance-app
+#   sudo journalctl -u compliance-app -f      # view logs
+# -----------------------------------------------------------------------
+[Unit]
+Description=Compliance Rule Manager (Gmail/Drive rule wizard)
+After=network.target
+
+[Service]
+Type=simple
+User=complianceapp
+WorkingDirectory=/opt/compliance-app/server
+EnvironmentFile=/opt/compliance-app/server/.env
+ExecStart=/usr/bin/node /opt/compliance-app/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+# Hardening (safe defaults for an internal Node service):
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
