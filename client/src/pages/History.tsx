@@ -66,7 +66,7 @@ export default function History() {
                 <td>{new Date(r.createdAt).toLocaleString()}</td>
                 <td>{r.kind === "gmail-compliance" ? "Gmail rule" : "Drive trust rule"}</td>
                 <td>
-                  <code>{r.orgUnitPath}</code>
+                  {r.orgUnitPath ? <code>{r.orgUnitPath}</code> : <span className="muted small">n/a</span>}
                 </td>
                 <td>{r.summary}</td>
                 <td>{r.createdBy}</td>

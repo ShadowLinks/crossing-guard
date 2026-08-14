@@ -42,9 +42,19 @@ research into Google Workspace's public APIs.
   condition is now a real `all_headers.contains('the-address')` match, not a workaround. Testing also confirmed
   this API has no duplicate protection - sending the same request twice creates two separate
   active rules. If the live call fails for any reason, the app automatically falls back to the guided
-  manual/deep-link flow rather than leaving you stuck. The Drive trust rule has no write API at all and always
-  goes through the manual flow. See the comment at the top of `server/src/services/policyService.ts` for the
-  full confirmed schema.
+  manual/deep-link flow rather than leaving you stuck. See the comment at the top of
+  `server/src/services/policyService.ts` for the full confirmed schema.
+- **The Drive trust rule feature was reworked mid-project** after the original design (block-all-external /
+  allow-only-trusted-domains, scoped to an org unit) turned out not to match what the district actually needed:
+  blocking Drive sharing between two specific internal people. Research (checked against Google's own help
+  center and the Cloud Identity Policy API's supported-settings documentation) confirmed: (1) trust rules have
+  no API at all - not even read-only, unlike DLP rules which do have API read/write support; and (2) a trust
+  rule's "Scope" (sender) side can only be an org unit or a group, never a single named individual, while its
+  "Condition" (target) side *can* name one specific person. The wizard was rebuilt around the resulting
+  workaround - put the sender alone in a throwaway Google Group, then write the trust rule against that group
+  naming the recipient in the condition - and generates full step-by-step instructions for it, including the
+  reverse direction if requested. This is manual-only by necessity, not by choice: there is nothing for this app
+  to call, so it can't create, list, or delete these rules the way it does for the live Gmail DLP path.
 - No independent security review or penetration test has been performed. The session handling, admin-role
   gate, and OAuth flow follow standard, well-established patterns, but "written by AI following best
   practices" is not a substitute for your own security review before this touches a production identity

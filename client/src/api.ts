@@ -17,8 +17,6 @@ export interface OrgUnitNode {
   children: OrgUnitNode[];
 }
 
-export type TrustRuleScope = "block-all-external" | "allow-only-trusted-domains";
-
 export interface ManualSteps {
   consoleDeepLink: string;
   summary: string;
@@ -30,7 +28,8 @@ export interface AuditRecord {
   kind: "gmail-compliance" | "drive-trust";
   createdAt: string;
   createdBy: string;
-  orgUnitPath: string;
+  /** Not set for drive-trust records - trust rules are scoped by group/individual, not OU. */
+  orgUnitPath?: string;
   summary: string;
   outcome: "created-live" | "manual-required" | "failed";
   detail?: string;
@@ -78,9 +77,9 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   createTrustRule: (payload: {
-    orgUnitPath: string;
-    scope: TrustRuleScope;
-    trustedDomains?: string[];
+    fromAddress: string;
+    toAddress: string;
+    bothDirections?: boolean;
     description?: string;
   }) =>
     request<RuleResult>("/api/rules/drive-trust", {

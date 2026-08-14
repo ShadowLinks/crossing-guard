@@ -1,30 +1,33 @@
 import { useState } from "react";
-import OrgUnitPicker from "../components/OrgUnitPicker";
 import DeepLinkCard from "../components/DeepLinkCard";
-import { api, RuleResult, TrustRuleScope } from "../api";
+import { api, RuleResult } from "../api";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function TrustRuleWizard() {
-  const [orgUnitPath, setOrgUnitPath] = useState("/");
-  const [scope, setScope] = useState<TrustRuleScope>("block-all-external");
-  const [domainsText, setDomainsText] = useState("");
+  const [fromAddress, setFromAddress] = useState("");
+  const [toAddress, setToAddress] = useState("");
+  const [bothDirections, setBothDirections] = useState(false);
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<RuleResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const trimmedFrom = fromAddress.trim();
+  const trimmedTo = toAddress.trim();
+  const bothProvided = Boolean(trimmedFrom) && Boolean(trimmedTo);
+  const addressesLookValid = !bothProvided || (EMAIL_RE.test(trimmedFrom) && EMAIL_RE.test(trimmedTo));
+  const canSubmit = bothProvided && addressesLookValid && !submitting;
 
   async function handleSubmit() {
     setSubmitting(true);
     setError(null);
     setResult(null);
     try {
-      const trustedDomains = domainsText
-        .split(",")
-        .map((d) => d.trim())
-        .filter(Boolean);
       const res = await api.createTrustRule({
-        orgUnitPath,
-        scope,
-        trustedDomains: scope === "allow-only-trusted-domains" ? trustedDomains : undefined,
+        fromAddress: trimmedFrom,
+        toAddress: trimmedTo,
+        bothDirections,
         description: description || undefined
       });
       setResult(res);
@@ -39,57 +42,49 @@ export default function TrustRuleWizard() {
     <div className="page">
       <h1>Restrict Google Drive sharing</h1>
       <p className="muted">
-        Trust rules control who your users can share Drive files with, outside your organization. Google does not
-        currently offer any way to create these automatically from an outside app - this wizard prepares everything
-        and hands you a direct link to finish with a couple of clicks.
+        Block one specific person from sharing Drive files with another specific person. Google's trust rules can't
+        target two individuals directly, so this walks you through the standard workaround: a small Google Group
+        containing just the sender, plus a trust rule that blocks sharing to the recipient. There is no Google API
+        for trust rules at all (not even to read them), so this is always a guided manual flow - it prepares every
+        value and gives you a direct link to finish with a few clicks in the Admin console.
       </p>
 
       <div className="card form-card">
-        <label className="field-label">1. Org unit</label>
-        <OrgUnitPicker value={orgUnitPath} onChange={setOrgUnitPath} />
+        <label className="field-label" htmlFor="fromAddress">
+          1. Restrict sharing from this person
+        </label>
+        <input
+          id="fromAddress"
+          type="email"
+          value={fromAddress}
+          onChange={(e) => setFromAddress(e.target.value)}
+          placeholder="e.g. student@yourdistrict.example.org"
+        />
 
-        <label className="field-label">2. Sharing policy</label>
-        <div className="radio-group">
-          <label className={`radio-option ${scope === "block-all-external" ? "radio-option-selected" : ""}`}>
-            <input
-              type="radio"
-              checked={scope === "block-all-external"}
-              onChange={() => setScope("block-all-external")}
-            />
-            <div>
-              <strong>Block all external sharing</strong>
-              <p>No Drive files can be shared with anyone outside your organization.</p>
-            </div>
-          </label>
-          <label
-            className={`radio-option ${scope === "allow-only-trusted-domains" ? "radio-option-selected" : ""}`}
-          >
-            <input
-              type="radio"
-              checked={scope === "allow-only-trusted-domains"}
-              onChange={() => setScope("allow-only-trusted-domains")}
-            />
-            <div>
-              <strong>Allow only trusted domains</strong>
-              <p>Sharing is blocked everywhere except the specific outside domains you list.</p>
-            </div>
-          </label>
-        </div>
-
-        {scope === "allow-only-trusted-domains" && (
-          <>
-            <label className="field-label" htmlFor="domains">
-              Trusted domains (comma-separated)
-            </label>
-            <input
-              id="domains"
-              type="text"
-              value={domainsText}
-              onChange={(e) => setDomainsText(e.target.value)}
-              placeholder="partnerdistrict.k12.va.us, vendor.com"
-            />
-          </>
+        <label className="field-label" htmlFor="toAddress">
+          2. Block sharing specifically to this person
+        </label>
+        <input
+          id="toAddress"
+          type="email"
+          value={toAddress}
+          onChange={(e) => setToAddress(e.target.value)}
+          placeholder="e.g. someone@yourdistrict.example.org"
+        />
+        <p className="muted small">Both addresses are required - this rule only ever targets this one specific pair.</p>
+        {!addressesLookValid && (
+          <p className="banner banner-error">One of the addresses above doesn't look like a real email address.</p>
         )}
+
+        <label className="field-label">
+          <input
+            type="checkbox"
+            checked={bothDirections}
+            onChange={(e) => setBothDirections(e.target.checked)}
+            style={{ marginRight: 8 }}
+          />
+          Also block the reverse direction (so neither can share with the other)
+        </label>
 
         <label className="field-label" htmlFor="trust-description">
           3. Notes (optional, for your own records)
@@ -101,7 +96,7 @@ export default function TrustRuleWizard() {
           placeholder="e.g. Requested by IT security review, ticket #5678"
         />
 
-        <button className="primary-button" disabled={submitting} onClick={handleSubmit}>
+        <button className="primary-button" disabled={!canSubmit} onClick={handleSubmit}>
           {submitting ? "Working..." : "Prepare rule"}
         </button>
       </div>

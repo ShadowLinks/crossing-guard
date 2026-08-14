@@ -56,26 +56,63 @@ export function buildGmailComplianceManualSteps(req: GmailRuleRequest): ManualSt
   };
 }
 
-export function buildTrustRuleManualSteps(req: TrustRuleRequest): ManualSteps {
-  const scopeText =
-    req.scope === "block-all-external"
-      ? "Block sharing Drive files outside the organization entirely"
-      : `Allow sharing only with these trusted domains: ${(req.trustedDomains ?? []).join(", ") || "(none listed)"}`;
+// Suggests a short, identifiable name for the throwaway group the trust
+// rule workaround needs, derived from the local part of the sender's
+// address (e.g. "jsmith@k12louisa.org" -> "block-share-jsmith").
+function suggestGroupName(address: string): string {
+  const local =
+    address
+      .split("@")[0]
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "sender";
+  return `block-share-${local}`;
+}
 
-  const steps = [
+// One direction of the workaround: Drive trust rules can only scope their
+// "Scope" (sender) side to an org unit or a group - never a single named
+// individual - but the "Condition" (target) side CAN name one specific
+// person. So blocking a specific sender -> specific recipient pair means
+// putting the sender alone in a throwaway group, then writing a rule that
+// targets the recipient by name by name and blocks it.
+function oneWayTrustRuleSteps(sender: string, recipient: string): string[] {
+  const groupName = suggestGroupName(sender);
+  return [
+    `Create a Google Group containing only "${sender}" as a member (Admin console > Directory > Groups > Create group). Name it something identifiable, e.g. "${groupName}" - this group exists purely so the trust rule below has something to scope to, since a trust rule's "Scope" side can only be an org unit or a group, never a single named individual.`,
     `Open the Rules page (link below), click "Create rule", and choose "Trust" as the rule type.`,
-    `Set the scope to the org unit "${req.orgUnitPath}".`,
-    req.scope === "block-all-external"
-      ? 'Under conditions, choose "File owner\'s organization" and set the action to "Restrict access" / "Deny" for any target outside your domain.'
-      : `Under conditions, add each trusted domain (${(req.trustedDomains ?? []).join(", ") || "none listed - add at least one before saving"}) and set the action to "Allow"; leave the default action for all other domains as "Deny".`,
-    "Name the rule clearly, e.g. \"Trust rule - " + req.orgUnitPath + "\", then save it.",
-    "Trust rules can take up to a few hours to fully propagate - Google's console will show the rule as \"Active\" once it has.",
-    req.description ? `Note for your records: ${req.description}` : "Note for your records: none provided."
+    `Under Scope, choose "Groups" and select the group you just created (containing only "${sender}").`,
+    `Under Condition, choose "User" and enter "${recipient}" exactly - this is the side of a trust rule that CAN target one specific individual.`,
+    `Set the action to "Block".`,
+    `Name the rule clearly, e.g. "Block Drive sharing: ${sender} -> ${recipient}", then save it.`
   ];
+}
+
+export function buildTrustRuleManualSteps(req: TrustRuleRequest): ManualSteps {
+  const from = req.fromAddress.trim();
+  const to = req.toAddress.trim();
+
+  const steps: string[] = [...oneWayTrustRuleSteps(from, to)];
+
+  if (req.bothDirections) {
+    steps.push(
+      `To also block the reverse direction (so "${to}" can't share back to "${from}" either), repeat the same process once more, swapping the two addresses:`
+    );
+    steps.push(...oneWayTrustRuleSteps(to, from));
+  }
+
+  steps.push(
+    'Trust rules can take up to a few hours to fully propagate - Admin console will show each rule as "Active" once it has.'
+  );
+  steps.push(
+    "There is no Google API for trust rules (read or write), so this app can't list, verify, or delete them for you afterward - manage them directly under Admin console > Rules going forward."
+  );
+  steps.push(req.description ? `Note for your records: ${req.description}` : "Note for your records: none provided.");
 
   return {
     consoleDeepLink: ADMIN_CONSOLE_LINKS.rulesPage,
-    summary: `${scopeText}, scoped to org unit "${req.orgUnitPath}".`,
+    summary: `Block Drive sharing from "${from}" to "${to}"${
+      req.bothDirections ? " (both directions)" : ""
+    }, via a Google Group + trust rule workaround (Admin console only - no API exists for trust rules).`,
     steps
   };
 }

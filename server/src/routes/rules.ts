@@ -103,23 +103,28 @@ rulesRouter.post("/drive-trust", requireAdmin, (req, res) => {
   const user = req.session.user!;
   const body = req.body as TrustRuleRequest;
 
-  if (!body?.orgUnitPath || !body?.scope) {
-    return res.status(400).json({ error: "invalid_request", message: "orgUnitPath and scope are required." });
-  }
-  if (body.scope === "allow-only-trusted-domains" && (!body.trustedDomains || body.trustedDomains.length === 0)) {
+  const fromAddress = body?.fromAddress?.trim();
+  const toAddress = body?.toAddress?.trim();
+
+  if (!fromAddress || !toAddress) {
     return res.status(400).json({
       error: "invalid_request",
-      message: "trustedDomains must include at least one domain for the allow-only-trusted-domains scope."
+      message: "Both the sender address and the recipient address are required."
     });
   }
+  if (!isLikelyEmailAddress(fromAddress) || !isLikelyEmailAddress(toAddress)) {
+    return res.status(400).json({ error: "invalid_request", message: "Addresses must look like a real email address." });
+  }
 
-  // Trust rules have no write API at all today (from Google or any known
-  // third party) - this is always the guided manual flow, never a live call.
-  const manual = buildTrustRuleManualSteps(body);
+  // Trust rules have no write (or read) API at all today, from Google or
+  // any known third party - confirmed against the Cloud Identity Policy
+  // API's full list of supported settings types, which doesn't mention
+  // trust rules even as read-only. This is always the guided manual flow,
+  // never a live call.
+  const manual = buildTrustRuleManualSteps({ ...body, fromAddress, toAddress });
   const record = appendAuditRecord({
     kind: "drive-trust",
     createdBy: user.email,
-    orgUnitPath: body.orgUnitPath,
     summary: manual.summary,
     outcome: "manual-required",
     consoleDeepLink: manual.consoleDeepLink

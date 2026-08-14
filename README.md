@@ -11,7 +11,8 @@ Admin console menus: sign in with a Google Workspace admin account, and generate
 
 1. a **Gmail rule** blocking mail from a specific address, to a specific address, or between two specific
    addresses - internal or external, in any combination Google Workspace can actually see, and/or
-2. a **Drive trust rule** blocking (or limiting) sharing files outside your organization, scoped to an org unit.
+2. a **Drive trust rule** blocking Drive sharing from one specific person to another specific person, via a
+   guided Google Group + trust rule workaround.
 
 ## Read this first: what's actually automated
 
@@ -29,11 +30,20 @@ it's more limited than the Admin console UI itself:
   includes a real block action (`gmailAction.blockContent`) - confirmed on 2026-08-14 by reading back a real
   rule from this district's own tenant, after an earlier draft of this doc wrongly concluded (from one Admin
   console screenshot that happened to be missing the option) that blocking wasn't available here at all.
-- There is still no write API of any kind for Drive trust rules, from Google or anyone else, as of when this
-  app was built.
+- There is still no API of any kind - read or write - for Drive trust rules, from Google or anyone else, as of
+  when this app was built. Confirmed by checking the Cloud Identity Policy API's full list of supported settings
+  types: it doesn't mention trust rules even as a read-only entry, unlike DLP rules which are fully read/write.
+  So this app can help you *prepare* a trust rule, but it can never list, verify, or delete one for you - manage
+  existing trust rules directly in Admin console &rarr; Rules.
+- Drive trust rules also have an asymmetry worth knowing: a rule's **Scope** (the sender/owner side) can only be
+  an org unit or a group, never a single named individual - but its **Condition** (the target side) *can* name
+  one specific person. So blocking sharing from one specific person to another requires a workaround: put the
+  sender alone in a throwaway Google Group, then write the trust rule against that group with the recipient
+  named in the condition. This app's Drive wizard walks you through exactly that, including the reverse
+  direction if you want it blocked both ways.
 
 **What this means in the app right now:** the Drive trust rule always goes through the guided manual/deep-link
-flow (no API exists for it at all). The Gmail rule defaults to the same guided manual flow, but can optionally
+flow (no API exists for it at all, in either direction). The Gmail rule defaults to the same guided manual flow, but can optionally
 create the rule live via the `ENABLE_LIVE_DLP_API` flag (`server/.env`) - the app fills in every value and
 calls Google directly, falling back automatically to the manual flow if the live call fails for any reason.
 Every field in the request (org unit, block action, address-matching condition, and the required rule metadata)

@@ -24,7 +24,7 @@ export default function Dashboard({ me }: { me: MeResponse }) {
         </Link>
         <Link to="/trust-rule" className="tile">
           <h2>Restrict Google Drive sharing</h2>
-          <p>Create a trust rule to block sharing files outside your organization, or allow only trusted domains.</p>
+          <p>Block one specific person from sharing Drive files with another specific person (guided manual steps).</p>
         </Link>
         <Link to="/history" className="tile">
           <h2>View history</h2>

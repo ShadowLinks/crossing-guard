@@ -29,12 +29,19 @@ export interface GmailRuleRequest {
   description?: string;
 }
 
-export type TrustRuleScope = "block-all-external" | "allow-only-trusted-domains";
-
+// Drive trust rules have no way to scope their "Scope" (sender) side to a
+// single named individual - only an org unit or group. The only way to
+// target two SPECIFIC people is the group workaround: put the sender in a
+// throwaway group, then use the rule's "Condition" side (which CAN name an
+// individual) to target the recipient. See buildTrustRuleManualSteps for
+// the full walkthrough this generates.
 export interface TrustRuleRequest {
-  orgUnitPath: string;
-  scope: TrustRuleScope;
-  trustedDomains?: string[];
+  /** The person whose sharing is being restricted (goes in the throwaway group). */
+  fromAddress: string;
+  /** The specific person they should be blocked from sharing with. */
+  toAddress: string;
+  /** Also generate the mirrored steps to block the reverse direction. */
+  bothDirections?: boolean;
   description?: string;
 }
 
@@ -46,7 +53,8 @@ export interface AuditRecord {
   kind: RuleKind;
   createdAt: string;
   createdBy: string;
-  orgUnitPath: string;
+  /** Not set for drive-trust records - trust rules are scoped by group/individual, not OU. */
+  orgUnitPath?: string;
   summary: string;
   outcome: RuleOutcome;
   detail?: string;
