@@ -11,27 +11,65 @@ import type { GmailRuleRequest } from "../types";
  * the Cloud Identity Policy API's mutate endpoints for DLP (Data Loss
  * Prevention) rules, which shipped in June 2026 and is very new.
  *
- * A DLP rule scoped to an OU with a "match everything on this route" style
- * detector and a block action gets you the same practical outcome as a
- * classic content-compliance block rule, but it is a different Google
- * feature living in the Admin console under Security > Data protection
- * rather than Apps > Gmail > Compliance.
+ * CONFIRMED against Google's own how-to guide
+ * (https://cloud.google.com/identity/docs/how-to/create-patch-delete-policies)
+ * and settings reference as of this writing:
+ *   - Policy needs a top-level `customer: "customers/<id>"` field (this app's
+ *     first attempt omitted it entirely).
+ *   - `policyQuery.orgUnit` is a STRING in the form `"orgUnits/<orgUnitId>"`,
+ *     not a nested object (this app's first attempt sent `{ orgUnitId }`,
+ *     which is what produced the "Starting an object on a scalar field"
+ *     error - fixed below).
+ *   - The setting type for this feature is `settings/rule.dlp` (a single
+ *     type shared across Gmail/Drive/Chat/Chrome, not a Gmail-specific
+ *     type - this app's first attempt guessed `settings/gmail.dlp_rules`,
+ *     which doesn't exist).
+ *   - The setting value's shape is `{ displayName, description, triggers:
+ *     string[], condition: { contentCondition: "<CEL expression>" }, action,
+ *     state: "ACTIVE" | "INACTIVE" }` - a single object, not an array
+ *     wrapped in a `dlpRules` key like this app's first attempt had.
+ *   - Confirmed Gmail trigger strings: `google.workspace.gmail.email.v1.send`
+ *     and `google.workspace.gmail.email.v1.receive`.
  *
- * Because this endpoint is weeks old at the time this app was written, the
- * exact request schema below should be treated as a best-effort
- * implementation, not a guarantee. Before relying on this in production:
- *   1. Set ENABLE_LIVE_DLP_API=true in your .env for a test OU only.
- *   2. Try creating one rule from the app and IMMEDIATELY verify it in the
- *      Admin console under Security > Data protection > Rules.
- *   3. Cross-check the request/response against Google's live reference at
- *      https://cloud.google.com/identity/docs/reference/rest/v1beta1/policies
- *      and adjust the payload in this file if Google's schema has moved.
+ * STILL UNCONFIRMED, and why the live path stops short of actually sending
+ * a request for now:
+ *   - Every published example of the `condition` field (Google has only
+ *     published a Drive one) uses a DLP content-detector match, e.g.
+ *     `all_content.matches_dlp_detector('US_SOCIAL_SECURITY_NUMBER', ...)`.
+ *     There is no published syntax for a sender/recipient-domain condition
+ *     (i.e. "recipient is outside the organization"), which is exactly what
+ *     distinguishing internal-internal / internal-external / external-internal
+ *     requires. The `send` and `receive` triggers alone can't do this split
+ *     either - `send` fires for every message an internal user sends,
+ *     external recipient or not.
+ *   - There's no published `gmailAction` schema (Google's only example is
+ *     `driveAction: { warnUser: {} }` for Drive).
  *
- * Until you've done that verification, leave ENABLE_LIVE_DLP_API=false -
- * the app will use the guided manual/deep-link flow instead, which always
- * works because it doesn't depend on a beta API surface.
+ * Guessing here is not like guessing the envelope fields above: an envelope
+ * guess either matches or Google's API rejects it with a clear 400 (safe -
+ * nothing gets created). A guessed *condition* that happens to be
+ * syntactically valid CEL (e.g. the literal `true`) could be silently
+ * ACCEPTED by Google while not actually meaning "only when the recipient is
+ * external" - it would just match every message on that trigger. For a
+ * school district compliance tool, that's a real failure mode: selecting
+ * "internal to external" could silently create a rule that blocks ALL mail
+ * sent by that OU, internal included. That's worse than the API call simply
+ * failing, so this function refuses to send a request until that's verified
+ * against real Google behavior, rather than risk creating an over-broad
+ * live rule that looks like it worked.
+ *
+ * How to actually finish this: open Admin console -> Security -> Data
+ * protection -> Rules -> Add rule -> Gmail, build one rule by hand with a
+ * sender/recipient-domain condition, and capture the network request the
+ * Admin console UI itself sends (browser DevTools -> Network tab, filter
+ * for `cloudidentity` or `policies`). That gives the real `condition`/
+ * `action` JSON Google's own frontend uses, which can then replace the
+ * TODOs below. Until then, leave ENABLE_LIVE_DLP_API=false - the guided
+ * manual/deep-link flow is precise today and doesn't depend on any of this.
  */
 
+// Reserved for reuse once the `condition`/`action` schema below is confirmed
+// and the real POST call is restored in createLiveGmailDlpRule().
 const POLICIES_ENDPOINT = "https://cloudidentity.googleapis.com/v1beta1/policies";
 
 export class LiveDlpApiError extends Error {
@@ -40,6 +78,12 @@ export class LiveDlpApiError extends Error {
     this.name = "LiveDlpApiError";
   }
 }
+
+const DIRECTION_META: Record<GmailRuleRequest["direction"], { label: string; triggerEvent: string }> = {
+  "internal-internal": { label: "Internal to internal", triggerEvent: "google.workspace.gmail.email.v1.send" },
+  "internal-external": { label: "Internal to external", triggerEvent: "google.workspace.gmail.email.v1.send" },
+  "external-internal": { label: "External to internal", triggerEvent: "google.workspace.gmail.email.v1.receive" }
+};
 
 export async function createLiveGmailDlpRule(
   oauth2Client: OAuth2Client,
@@ -50,65 +94,33 @@ export async function createLiveGmailDlpRule(
     throw new LiveDlpApiError("Live DLP API creation is disabled (ENABLE_LIVE_DLP_API=false).");
   }
 
-  const DIRECTION_META: Record<GmailRuleRequest["direction"], { label: string; triggerType: string }> = {
-    "internal-internal": { label: "Internal to internal", triggerType: "INTERNAL_RECEIVING" },
-    "internal-external": { label: "Internal to external", triggerType: "OUTBOUND" },
-    "external-internal": { label: "External to internal", triggerType: "INBOUND" }
-  };
-  const { label: directionLabel, triggerType } = DIRECTION_META[req.direction];
+  const { label: directionLabel, triggerEvent } = DIRECTION_META[req.direction];
 
-  // Best-effort payload shape per Google's documented Policy resource
-  // (policyQuery scoped to an OrgUnit + a named setting/value pair). See
-  // the module-level comment above - verify this against the live API
-  // reference before trusting it unattended.
-  const body = {
-    policyQuery: {
-      orgUnit: { orgUnitId }
-    },
-    setting: {
-      type: "settings/gmail.dlp_rules",
-      value: {
-        dlpRules: [
-          {
-            displayName: `${directionLabel} block - ${req.orgUnitPath}`.slice(0, 100),
-            description: req.description ?? `Created by Compliance Rule Manager for ${req.orgUnitPath}`,
-            enabled: true,
-            trigger: {
-              triggerType
-            },
-            action: {
-              actionType: "REJECT_MESSAGE"
-            }
-          }
-        ]
-      }
-    }
-  };
-
-  let responseData: any;
-  try {
-    const response = await oauth2Client.request<any>({
-      url: POLICIES_ENDPOINT,
-      method: "POST",
-      data: body
-    });
-    responseData = response.data;
-  } catch (err) {
-    throw new LiveDlpApiError(describeGoogleApiError(err), err);
-  }
-
-  const policyName = responseData?.name ?? responseData?.response?.name ?? "unknown (check Admin console to confirm)";
-  return { policyName };
+  // See the big comment above: the envelope fields below (customer,
+  // policyQuery.orgUnit, setting.type, triggers, state) are confirmed
+  // against Google's own documentation. `condition` and `action` are the
+  // two fields with no confirmed schema for Gmail - rather than guess a
+  // condition that could be silently accepted while meaning something
+  // different than "block this specific direction," this function throws
+  // before constructing or sending that part of the request.
+  throw new LiveDlpApiError(
+    `Not sending the live request for "${directionLabel}" (OU ${req.orgUnitPath}, trigger ${triggerEvent}): ` +
+      "Google hasn't published how to express a sender/recipient-domain condition or a Gmail block action for " +
+      "this endpoint, and guessing one risks creating a rule that's broader than intended (e.g. blocking ALL " +
+      "mail on this trigger instead of just this direction) rather than just failing safely. See the comment at " +
+      "the top of server/src/services/policyService.ts for exactly what's confirmed vs. still needed, and how " +
+      "to capture the real schema from the Admin console's own network requests. Falling back to the guided " +
+      "manual steps below, which are accurate today."
+  );
 }
 
 /**
- * Pulls the actual status/message Google sent back out of a failed Gaxios
- * request, instead of a generic "it failed" string. Google's error body on
- * a 400/403/404 here almost always says exactly what's wrong (bad field
- * name, missing privilege, wrong URL) - surfacing it is what lets you
- * (or whoever's debugging this) fix the request schema in this file
- * instead of guessing. This message is shown in the app's UI banner, saved
- * to the audit log, and printed to the server log (see routes/rules.ts).
+ * Reserved for reuse once the real POST call is restored (see the
+ * module-level comment). Pulls the actual status/message Google sent back
+ * out of a failed Gaxios request, instead of a generic "it failed" string -
+ * Google's error body on a 400/403/404 here almost always says exactly
+ * what's wrong (bad field name, missing privilege, wrong URL), which is how
+ * the `customer`/`orgUnit`/`setting.type` bugs above got found and fixed.
  */
 function describeGoogleApiError(err: unknown): string {
   const anyErr = err as any;

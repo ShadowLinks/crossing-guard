@@ -24,23 +24,25 @@ it's more limited than the Admin console UI itself:
   reference marks both as read-only. No app, including this one, can create them without a human clicking
   through the console.
 - Google's newer **Cloud Identity Policy API** gained real create/update/delete support for **DLP (Data Loss
-  Prevention) rules** in June 2026 - a different, newer feature that can achieve the same practical outcome as
-  a content-compliance block (stop mail matching a condition on a given route, scoped to an OU), just via a
-  different underlying Google feature (Security &rarr; Data protection rather than Gmail &rarr; Compliance).
-  This app can optionally use that API to create Gmail rules live, with **zero manual steps**.
+  Prevention) rules** in June 2026 - a different, newer feature that could in principle achieve the same
+  practical outcome as a content-compliance block (stop mail matching a condition on a given route, scoped to
+  an OU), just via a different underlying Google feature (Security &rarr; Data protection rather than Gmail
+  &rarr; Compliance).
 - There is still no write API of any kind for Drive trust rules, from Google or anyone else, as of when this
   app was built.
 
-**What this means in the app:**
-
-| Rule type | Default behavior | With `ENABLE_LIVE_DLP_API=true` |
-|---|---|---|
-| Gmail block rule | Generates every value + a direct link into the Admin console; admin clicks a couple of buttons to finish | Created automatically via the DLP mutate API; falls back to the manual flow automatically if the call fails |
-| Drive trust rule | Generates every value + a direct link into the Admin console; admin clicks a couple of buttons to finish | Same - no live option exists for this one |
-
-The manual/deep-link mode is the safe default and always works, because it doesn't depend on a two-month-old
-beta API. See `server/src/services/policyService.ts` for exactly what to verify before turning on live Gmail
-rule creation, and do that verification against a test OU first.
+**What this means in the app right now:** both rule types always go through the guided manual/deep-link flow -
+the app fills in every value and hands you a direct link into the Admin console to finish with a couple of
+clicks. The `ENABLE_LIVE_DLP_API` flag exists for the Gmail path but currently does **not** create anything
+live: testing against a real tenant turned up Google's exact request schema for the parts that scope and name
+a DLP rule (confirmed working), but there's no published schema for the part that would filter by
+sender/recipient domain (internal vs. external) or actually block a Gmail message. Guessing that part isn't
+like guessing a field name - a wrong guess there could be silently *accepted* by Google while creating a rule
+broader than intended (e.g. blocking all mail from an OU instead of just mail to external addresses), which is
+worse than the call simply failing. So `createLiveGmailDlpRule()` deliberately throws before sending anything,
+explaining exactly what's missing. See the large comment at the top of `server/src/services/policyService.ts`
+for the full confirmed-vs-unconfirmed breakdown and how to capture the missing piece (via the Admin console's
+own network requests) if you want to finish wiring this up.
 
 A note on **GAM** (the popular open-source Workspace admin CLI): its changelog claims DLP create/update/delete
 support was added around the same time as Google's API update, but GAM's own command reference still only
