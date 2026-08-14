@@ -55,6 +55,14 @@ git clone <your-repo-url> /opt/compliance-app
 #     contents end up directly inside /opt/compliance-app ---
 ```
 
+Git refuses to operate on a repo it doesn't think you own (a "dubious ownership" safety check), which will bite
+you later once this folder is owned by the `complianceapp` service account instead of your login. Head that
+off now, once, system-wide, so it never matters which user runs `git` here later:
+
+```bash
+sudo git config --system --add safe.directory /opt/compliance-app
+```
+
 ## 5. Install dependencies and build
 
 Nothing is pre-installed here either - `npm install` downloads every package this app needs from scratch:
@@ -77,9 +85,10 @@ nano server/.env    # or your editor of choice
 
 Fill in, at minimum: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_DOMAIN`, `SESSION_SECRET` (generate
 one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`), and set
-`APP_BASE_URL` to your real HTTPS hostname (e.g. `https://compliance.lcps.k12.va.us`) and `COOKIE_SECURE=true`
-once you're running behind HTTPS. See the main [README.md](./README.md) for how to obtain the Google OAuth
-client ID/secret.
+`APP_BASE_URL` to your real HTTPS hostname (e.g. `https://compliance.yourdistrict.example.org` - **no port
+number**, and it must be `https://`, not `http://` - see "Troubleshooting" below for why) and
+`COOKIE_SECURE=true` once you're running behind HTTPS. See the main [README.md](./README.md) for how to obtain
+the Google OAuth client ID/secret.
 
 Then hand the whole app folder to the service account you created:
 
@@ -93,13 +102,13 @@ sudo chmod 600 /opt/compliance-app/server/.env
 Put your existing wildcard certificate files somewhere nginx can read but that's still locked down:
 
 ```bash
-sudo mkdir -p /etc/ssl/private/lcps-wildcard
-sudo cp /path/to/your/fullchain.pem /etc/ssl/private/lcps-wildcard/fullchain.pem
-sudo cp /path/to/your/privkey.pem   /etc/ssl/private/lcps-wildcard/privkey.pem
-sudo chmod 700 /etc/ssl/private/lcps-wildcard
-sudo chmod 600 /etc/ssl/private/lcps-wildcard/privkey.pem
-sudo chmod 644 /etc/ssl/private/lcps-wildcard/fullchain.pem
-sudo chown -R root:root /etc/ssl/private/lcps-wildcard
+sudo mkdir -p /etc/ssl/private/wildcard-cert
+sudo cp /path/to/your/fullchain.pem /etc/ssl/private/wildcard-cert/fullchain.pem
+sudo cp /path/to/your/privkey.pem   /etc/ssl/private/wildcard-cert/privkey.pem
+sudo chmod 700 /etc/ssl/private/wildcard-cert
+sudo chmod 600 /etc/ssl/private/wildcard-cert/privkey.pem
+sudo chmod 644 /etc/ssl/private/wildcard-cert/fullchain.pem
+sudo chown -R root:root /etc/ssl/private/wildcard-cert
 ```
 
 Notes:
@@ -157,6 +166,56 @@ sudo -u complianceapp npm install --workspaces
 sudo -u complianceapp npm run build
 sudo systemctl restart compliance-app
 ```
+
+If any of those commands were ever run as a different user (your own login via plain `sudo`, or as `root`)
+instead of via `sudo -u complianceapp`, ownership of some files drifts away from `complianceapp` and both
+`git pull` and `npm install`/`npm run build` will start failing with permission errors. See "Fixing a broken
+ownership state" in Troubleshooting below if that happens - it's a one-command fix.
+
+---
+
+## Troubleshooting
+
+### `Error 400: redirect_uri_mismatch` when signing in
+
+Google requires the redirect URI to match **exactly** what's registered in Google Cloud Console - same scheme,
+host, port, and path. There's also a hard Google policy behind this that trips people up specifically on a
+fresh server: **Google only allows `http://` redirect URIs for `localhost`/`127.0.0.1`. Every other hostname
+must use `https://`.** So if you test by hitting the app directly on its real hostname over plain HTTP (for
+example `http://your-server-hostname:3000/auth/google/callback`, before nginx/TLS is wired up), Google will
+never accept that redirect URI - it's not just unregistered, it's disallowed outright.
+
+Two ways to fix it:
+
+- **Finish the HTTPS setup first** (steps 7-9 above), then use `https://<your-real-hostname>/auth/google/callback`
+  (no port - nginx listens on the standard 443) both in `server/.env` (`APP_BASE_URL`) and as the Authorized
+  redirect URI in Google Cloud Console. This is the right long-term setup anyway.
+- **To test sooner, before TLS is set up**, tunnel the port to your own machine instead of hitting the
+  server's hostname directly: `ssh -L 3000:localhost:3000 you@your-server`, then browse to
+  `http://localhost:3000` on your own machine. `localhost` is exempt from the HTTPS requirement, so
+  `http://localhost:3000/auth/google/callback` can be added as an additional Authorized redirect URI in Google
+  Cloud Console (you can list more than one) purely for this kind of early testing.
+
+### `fatal: detected dubious ownership in repository` / `npm error code EACCES` when updating
+
+This means the repo folder ended up owned by more than one user - usually because a command got run as your
+own login (via `sudo <cmd>`) or as `root` at some point instead of via `sudo -u complianceapp <cmd>`. Two
+things need to both be true for updates to work: the whole folder needs to be owned by `complianceapp`, and
+git needs to trust that ownership.
+
+```bash
+sudo git config --system --add safe.directory /opt/compliance-app   # only needed once, if step 4 was skipped
+sudo chown -R complianceapp:complianceapp /opt/compliance-app
+sudo -u complianceapp git pull
+sudo -u complianceapp npm install --workspaces
+sudo -u complianceapp npm run build
+sudo systemctl restart compliance-app
+```
+
+Running `git config --global --add safe.directory` as your own login (or via plain `sudo`, which acts as
+`root`) does **not** fix this for the `complianceapp` user - each user's `--global` git config is separate.
+Either use `--system` (applies to every user, as above) or run the `--global` version as `complianceapp`
+specifically: `sudo -u complianceapp git config --global --add safe.directory /opt/compliance-app`.
 
 ---
 

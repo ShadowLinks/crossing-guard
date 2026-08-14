@@ -19,20 +19,20 @@
 server {
     listen 80;
     listen [::]:80;
-    server_name compliance.lcps.k12.va.us;   # <-- change to your real hostname
+    server_name compliance.yourdistrict.example.org;   # <-- change to your real hostname
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name compliance.lcps.k12.va.us;   # <-- change to your real hostname
+    server_name compliance.yourdistrict.example.org;   # <-- change to your real hostname
 
     # --- Wildcard certificate (see SETUP.md "Installing your wildcard SSL
     # certificate" section for exactly where to put these files and how to
     # lock down their permissions). ---
-    ssl_certificate     /etc/ssl/private/lcps-wildcard/fullchain.pem;
-    ssl_certificate_key /etc/ssl/private/lcps-wildcard/privkey.pem;
+    ssl_certificate     /etc/ssl/private/wildcard-cert/fullchain.pem;
+    ssl_certificate_key /etc/ssl/private/wildcard-cert/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;

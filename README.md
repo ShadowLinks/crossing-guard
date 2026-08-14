@@ -74,7 +74,10 @@ You need a Google Cloud project associated with your Workspace domain to get OAu
 4. **Create an OAuth client**: APIs & Services &rarr; Credentials &rarr; Create Credentials &rarr; OAuth
    client ID &rarr; Web application.
    - Authorized redirect URI: `http://localhost:3000/auth/google/callback` for local testing, and/or
-     `https://<your-real-hostname>/auth/google/callback` for the deployed server. You can list both at once.
+     `https://<your-real-hostname>/auth/google/callback` (no port, **must be `https://`**) for the deployed
+     server. You can list both at once. Google only allows plain `http://` for `localhost`/`127.0.0.1` - every
+     other hostname is rejected outright unless it's `https://`. See "Troubleshooting" in
+     [SETUP.md](./SETUP.md) if you hit `redirect_uri_mismatch`.
    - Copy the generated **Client ID** and **Client secret** into `server/.env` (`GOOGLE_CLIENT_ID`,
      `GOOGLE_CLIENT_SECRET`).
 5. The signed-in user needs an actual Workspace admin role (super admin, or a delegated role with at least

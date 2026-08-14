@@ -2,7 +2,7 @@
 
 This project — the Express/TypeScript backend, the React frontend, the nginx/systemd deployment files, and
 `README.md`/`SETUP.md` — was written by an AI coding assistant (Claude, via Claude Code / Cowork) at the
-request of Loudoun County Public Schools IT staff, based on a description of the desired app and a round of
+request of district IT staff, based on a description of the desired app and a round of
 research into Google Workspace's public APIs.
 
 ## What was verified before delivery
