@@ -26,14 +26,19 @@ research into Google Workspace's public APIs.
   reached the rule wizards, which exercises the OAuth flow, the admin-role check, and OU-tree browsing against
   real data - those three pieces are now confirmed working, not just type-checked.
 - **The optional live DLP rule creation path** (`ENABLE_LIVE_DLP_API=true`) calls a Google API that was roughly
-  two months old at the time this was written, with thin public documentation. *Update:* real testing against
-  it turned up a bug (a wrong field shape) that has since been fixed and confirmed against Google's own
-  how-to guide, along with several other envelope fields. However, the part of the request that would actually
-  filter by sender/recipient domain and block a Gmail message has no published schema anywhere Google has
-  written, and guessing it risks a rule silently broader than intended rather than a safe failure - so this
-  path now deliberately refuses to send a request at all, explaining why, until that piece is confirmed (see
-  the comment at the top of `server/src/services/policyService.ts`). Both rule types go through the guided
-  manual/deep-link flow today, which is accurate and doesn't depend on any of this.
+  two months old at the time this was written, with thin public documentation. *Update (2026-08-14):* real
+  testing against it turned up and fixed a wrong field shape (using Google's own how-to guide), and then - after
+  an incorrect intermediate conclusion that Gmail DLP rules couldn't block mail at all, based on one Admin
+  console screenshot that happened to omit the option - a real rule read back from this district's own tenant
+  confirmed the actual block action shape: `action.gmailAction.blockContent.actionParams` with
+  `applyInternalMessages` / `applyExternalMessages` booleans, combined with the send/receive trigger to express
+  a direction. That's a real, confirmed shape, not a guess. The one remaining guess is the CEL condition sent
+  when there's no content to match on (`condition.contentCondition: "true"`) - a plausible, syntactically valid
+  "match everything" expression, chosen specifically because guessing wrong there fails loudly (Google rejects
+  bad CEL with a 400) rather than silently creating a broader rule than intended. If that call fails for any
+  reason, the app automatically falls back to the guided manual/deep-link flow rather than leaving you stuck.
+  The Drive trust rule has no write API at all and always goes through the manual flow. See the comment at the
+  top of `server/src/services/policyService.ts` for the full detail.
 - No independent security review or penetration test has been performed. The session handling, admin-role
   gate, and OAuth flow follow standard, well-established patterns, but "written by AI following best
   practices" is not a substitute for your own security review before this touches a production identity
@@ -46,6 +51,7 @@ research into Google Workspace's public APIs.
 
 Before using this for real compliance changes: read through the code (it's a small, readable codebase — see
 the "Project layout" section in `README.md`), test both wizards against a low-stakes test OU in your own
-domain, and confirm the resulting Gmail/Drive settings in the Admin console match what you expected. For the
-Gmail wizard specifically, that means using the manual/deep-link flow it hands you today - the live path is
-intentionally not wired up yet, for the reason above.
+domain, and confirm the resulting Gmail/Drive settings in the Admin console match what you expected. If you
+turn on `ENABLE_LIVE_DLP_API`, do that testing with the flag on: create a rule against a throwaway OU for each
+of the three directions, and check each resulting rule in Admin console (Security &rarr; Data protection &rarr;
+Rules) shows the block action and internal/external scope you expected before trusting it on a real OU.

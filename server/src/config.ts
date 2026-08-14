@@ -16,9 +16,14 @@ export const config = {
   googleClientSecret: required("GOOGLE_CLIENT_SECRET", process.env.GOOGLE_CLIENT_SECRET),
   allowedDomain: required("ALLOWED_DOMAIN", process.env.ALLOWED_DOMAIN).toLowerCase(),
   sessionSecret: required("SESSION_SECRET", process.env.SESSION_SECRET),
-  enableLiveDlpApi: (process.env.ENABLE_LIVE_DLP_API ?? "false").toLowerCase() === "true",
   googleCustomerId: process.env.GOOGLE_CUSTOMER_ID ?? "my_customer",
   cookieSecure: (process.env.COOKIE_SECURE ?? "false").toLowerCase() === "true",
+  // Opt-in: attempt to create the Gmail DLP rule live via the Cloud
+  // Identity Policy API, falling back to the guided manual flow if that
+  // call fails for any reason. Off by default so a fresh install always
+  // works purely off the manual flow until an admin has verified the live
+  // path against their own tenant. See NOTICE.md before turning this on.
+  enableLiveDlpApi: (process.env.ENABLE_LIVE_DLP_API ?? "false").toLowerCase() === "true",
   get oauthRedirectUri() {
     return `${this.appBaseUrl}/auth/google/callback`;
   }
@@ -28,9 +33,16 @@ export const config = {
 //  - identify the signed-in user and their domain
 //  - read the org unit tree (Directory API)
 //  - read the signed-in user's own directory record, to check admin status
-//  - read/write Cloud Identity policies (DLP rules) - write is only ever
-//    attempted when ENABLE_LIVE_DLP_API=true, but the scope is requested
-//    up front so an admin doesn't have to re-consent later to flip the flag.
+//  - create/read Gmail DLP rules (Cloud Identity Policy API), for the
+//    opt-in live rule path (see ENABLE_LIVE_DLP_API above)
+//
+// Correction: an earlier version of this comment said Gmail's newer DLP
+// rules can't block mail, based on an Admin console screenshot that
+// happened to be missing the "Block message" option. That was wrong - a
+// real rule read back from this district's tenant on 2026-08-14 confirmed
+// blocking IS available via `action.gmailAction.blockContent`. See the
+// comment at the top of server/src/services/policyService.ts for exactly
+// what's confirmed vs. still a (safe, fail-loud) guess.
 export const OAUTH_SCOPES = [
   "openid",
   "email",

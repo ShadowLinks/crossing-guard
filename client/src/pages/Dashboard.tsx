@@ -12,8 +12,8 @@ export default function Dashboard({ me }: { me: MeResponse }) {
       {!me.liveDlpApiEnabled && (
         <div className="banner banner-info">
           Gmail rules are currently created in guided mode: this app fills in every value for you and hands you a
-          direct link into the Admin console to finish with a couple of clicks. Google does not yet provide a way
-          for any app to create these rules automatically end-to-end.
+          direct link into the Admin console to finish with a couple of clicks. Fully automatic creation is built
+          in but turned off until your admin enables and verifies it (see NOTICE.md).
         </div>
       )}
 

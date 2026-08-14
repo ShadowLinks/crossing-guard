@@ -1,23 +1,14 @@
 import { Router } from "express";
+import { config } from "../config";
 import { requireAdmin } from "../auth/session";
 import { getAuthedClient } from "../auth/getClient";
-import { getOrgUnitTree } from "../services/directoryService";
-import { buildGmailComplianceManualSteps, buildTrustRuleManualSteps } from "../services/ruleBuilder";
-import { createLiveGmailDlpRule, LiveDlpApiError } from "../services/policyService";
+import { buildGmailComplianceManualSteps, buildTrustRuleManualSteps, ADMIN_CONSOLE_LINKS } from "../services/ruleBuilder";
 import { appendAuditRecord, listAuditRecords } from "../services/auditStore";
-import { config } from "../config";
-import type { GmailRuleRequest, OrgUnitNode, TrustRuleRequest } from "../types";
+import { getOrgUnitByPath } from "../services/directoryService";
+import { createLiveGmailDlpRule, LiveDlpApiError } from "../services/policyService";
+import type { GmailRuleRequest, TrustRuleRequest } from "../types";
 
 export const rulesRouter = Router();
-
-function findOrgUnit(root: OrgUnitNode, orgUnitPath: string): OrgUnitNode | undefined {
-  if (root.orgUnitPath === orgUnitPath) return root;
-  for (const child of root.children) {
-    const found = findOrgUnit(child, orgUnitPath);
-    if (found) return found;
-  }
-  return undefined;
-}
 
 rulesRouter.get("/", requireAdmin, (_req, res) => {
   res.json(listAuditRecords());
@@ -33,6 +24,10 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
 
   const manual = buildGmailComplianceManualSteps(body);
 
+  // Off by default (ENABLE_LIVE_DLP_API) - see config.ts and NOTICE.md.
+  // When off, or if the live call fails for any reason, this always falls
+  // back to the guided manual/deep-link flow so the admin can still get
+  // the rule created by hand.
   if (!config.enableLiveDlpApi) {
     const record = appendAuditRecord({
       kind: "gmail-compliance",
@@ -47,38 +42,45 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
 
   try {
     const client = getAuthedClient(user);
-    const tree = await getOrgUnitTree(client);
-    const ou = findOrgUnit(tree, body.orgUnitPath);
-    if (!ou) {
-      return res.status(404).json({ error: "orgunit_not_found" });
-    }
+    const orgUnit = await getOrgUnitByPath(client, body.orgUnitPath);
+    const result = await createLiveGmailDlpRule(client, body, orgUnit.orgUnitId);
 
-    const result = await createLiveGmailDlpRule(client, ou.orgUnitId, body);
+    const detail = result.pending
+      ? `Google accepted the rule (${result.policyName}) but hadn't finished creating it yet as of this response - check Admin console > Security > Data protection > Rules in a minute to confirm it's Active.`
+      : `Created live Gmail DLP rule ${result.policyName}. Confirm the direction and action match what you expected under Admin console > Security > Data protection > Rules before relying on it.`;
+
     const record = appendAuditRecord({
       kind: "gmail-compliance",
       createdBy: user.email,
       orgUnitPath: body.orgUnitPath,
       summary: manual.summary,
       outcome: "created-live",
-      detail: `Created via live DLP API as ${result.policyName}. Verify it in Admin console under Security > Data protection > Rules.`
+      detail,
+      consoleDeepLink: ADMIN_CONSOLE_LINKS.rulesPage
     });
-    return res.json({ outcome: "created-live", policyName: result.policyName, record });
-  } catch (err) {
-    const message =
-      err instanceof LiveDlpApiError
-        ? err.message
-        : "Unexpected error calling the live DLP API.";
+
+    return res.json({ outcome: "created-live", manual, record, policyName: result.policyName });
+  } catch (err: any) {
+    const message = err instanceof LiveDlpApiError ? err.message : "Unexpected error calling Google.";
+    const detail = err instanceof LiveDlpApiError ? err.detail : err?.message;
+    console.error("Live Gmail DLP rule creation failed, falling back to manual flow:", message, detail ?? err);
+
     const record = appendAuditRecord({
       kind: "gmail-compliance",
       createdBy: user.email,
       orgUnitPath: body.orgUnitPath,
       summary: manual.summary,
-      outcome: "failed",
-      detail: message,
+      outcome: "manual-required",
+      detail: `Live rule creation failed (${message}${detail ? " " + detail : ""}) - falling back to the guided manual steps below.`,
       consoleDeepLink: manual.consoleDeepLink
     });
-    console.error("Live DLP rule creation failed, returning manual fallback", err);
-    return res.json({ outcome: "manual-required", manual, record, warning: message });
+
+    return res.json({
+      outcome: "manual-required",
+      manual,
+      record,
+      warning: `Automatic creation failed, so this still needs the manual steps below. Google said: ${message}${detail ? " " + detail : ""}`
+    });
   }
 });
 

@@ -58,3 +58,37 @@ export async function getOrgUnitTree(oauth2Client: OAuth2Client): Promise<OrgUni
 
   return root;
 }
+
+/**
+ * Resolves an org unit path (e.g. "/Kiosks/CO Sped Inventory") to its
+ * Google-assigned orgUnitId, which is what the Cloud Identity Policy API
+ * needs (as `orgUnits/{id}`) rather than the human-readable path.
+ *
+ * Throws a plain Error with a message safe to show the admin if the path
+ * doesn't resolve to a real org unit, or is the synthetic "/" root this
+ * app uses to mean "entire organization" (the Directory API has no single
+ * org unit representing that - it's a customer-wide concept, not an OU).
+ */
+export async function getOrgUnitByPath(
+  oauth2Client: OAuth2Client,
+  orgUnitPath: string
+): Promise<{ orgUnitId: string; name: string }> {
+  if (orgUnitPath === "/" || orgUnitPath.trim() === "") {
+    throw new Error(
+      'Live rule creation needs one specific org unit, not "Entire organization". Pick a specific OU, or use the manual steps below for a domain-wide rule.'
+    );
+  }
+
+  const directory = google.admin({ version: "directory_v1", auth: oauth2Client });
+  const { data } = await directory.orgunits.get({
+    customerId: config.googleCustomerId,
+    // The Directory API wants the path without its leading slash.
+    orgUnitPath: orgUnitPath.replace(/^\/+/, "")
+  });
+
+  if (!data.orgUnitId || !data.name) {
+    throw new Error(`Google didn't return a usable org unit for "${orgUnitPath}".`);
+  }
+
+  return { orgUnitId: data.orgUnitId, name: data.name };
+}

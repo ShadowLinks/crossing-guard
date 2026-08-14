@@ -38,5 +38,7 @@ app.get("*", (req, res, next) => {
 app.listen(config.port, () => {
   console.log(`Compliance Rule Manager listening on port ${config.port}`);
   console.log(`OAuth redirect URI configured as: ${config.oauthRedirectUri}`);
-  console.log(`Live DLP API writes: ${config.enableLiveDlpApi ? "ENABLED" : "disabled (manual/deep-link mode)"}`);
+  console.log(
+    `Live DLP API writes: ${config.enableLiveDlpApi ? "ENABLED (will attempt live rule creation, falling back to manual on failure)" : "disabled (Gmail rules always use the guided manual flow)"}`
+  );
 });

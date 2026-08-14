@@ -24,25 +24,26 @@ it's more limited than the Admin console UI itself:
   reference marks both as read-only. No app, including this one, can create them without a human clicking
   through the console.
 - Google's newer **Cloud Identity Policy API** gained real create/update/delete support for **DLP (Data Loss
-  Prevention) rules** in June 2026 - a different, newer feature that could in principle achieve the same
-  practical outcome as a content-compliance block (stop mail matching a condition on a given route, scoped to
-  an OU), just via a different underlying Google feature (Security &rarr; Data protection rather than Gmail
-  &rarr; Compliance).
+  Prevention) rules** in June 2026 - a different, newer feature that achieves the same practical outcome as a
+  content-compliance block (stop mail matching a condition on a given route, scoped to an OU), via a different
+  underlying Google feature (Security &rarr; Data protection rather than Gmail &rarr; Compliance). This
+  includes a real block action (`gmailAction.blockContent`) - confirmed on 2026-08-14 by reading back a real
+  rule from this district's own tenant, after an earlier draft of this doc wrongly concluded (from one Admin
+  console screenshot that happened to be missing the option) that blocking wasn't available here at all.
 - There is still no write API of any kind for Drive trust rules, from Google or anyone else, as of when this
   app was built.
 
-**What this means in the app right now:** both rule types always go through the guided manual/deep-link flow -
-the app fills in every value and hands you a direct link into the Admin console to finish with a couple of
-clicks. The `ENABLE_LIVE_DLP_API` flag exists for the Gmail path but currently does **not** create anything
-live: testing against a real tenant turned up Google's exact request schema for the parts that scope and name
-a DLP rule (confirmed working), but there's no published schema for the part that would filter by
-sender/recipient domain (internal vs. external) or actually block a Gmail message. Guessing that part isn't
-like guessing a field name - a wrong guess there could be silently *accepted* by Google while creating a rule
-broader than intended (e.g. blocking all mail from an OU instead of just mail to external addresses), which is
-worse than the call simply failing. So `createLiveGmailDlpRule()` deliberately throws before sending anything,
-explaining exactly what's missing. See the large comment at the top of `server/src/services/policyService.ts`
-for the full confirmed-vs-unconfirmed breakdown and how to capture the missing piece (via the Admin console's
-own network requests) if you want to finish wiring this up.
+**What this means in the app right now:** the Drive trust rule always goes through the guided manual/deep-link
+flow (no API exists for it at all). The Gmail rule defaults to the same guided manual flow, but can optionally
+create the rule live via the `ENABLE_LIVE_DLP_API` flag (`server/.env`) - the app fills in every value and
+calls Google directly, falling back automatically to the manual flow if the live call fails for any reason. The
+request shape (which org unit, which direction, and the actual block action) was confirmed against this
+district's real tenant; the one part that's still a best-effort-but-safe guess is the CEL "match everything"
+condition (`condition.contentCondition: "true"`) used because this app blocks by direction, not by content -
+see the comment at the top of `server/src/services/policyService.ts` for exactly what's confirmed vs. guessed,
+and why a wrong guess there fails loudly instead of silently creating too broad a rule. Recommend leaving the
+flag off until you've tested it against a low-stakes OU and confirmed the resulting rule in the Admin console
+(Security &rarr; Data protection &rarr; Rules) matches what you expected.
 
 A note on **GAM** (the popular open-source Workspace admin CLI): its changelog claims DLP create/update/delete
 support was added around the same time as Google's API update, but GAM's own command reference still only

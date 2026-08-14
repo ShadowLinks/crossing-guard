@@ -35,8 +35,9 @@ export default function GmailRuleWizard({ liveDlpEnabled }: { liveDlpEnabled: bo
 
       {!liveDlpEnabled && (
         <div className="banner banner-info">
-          This will prepare the rule and give you a direct link to finish creating it in the Admin console - Google
-          doesn't currently allow any app to create this specific rule type automatically end-to-end.
+          This will prepare the rule and give you a direct link to finish creating it in the Admin console with a
+          couple of clicks. Automatic, end-to-end creation is built into this app but turned off until your admin
+          has verified it against this tenant - see NOTICE.md.
         </div>
       )}
 
