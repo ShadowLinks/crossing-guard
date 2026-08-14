@@ -236,41 +236,46 @@ export async function createLiveGmailDlpRule(
   try {
     for (const plan of plans) {
       const displayName = `Block: ${baseName} (${plan.label})`.slice(0, 100);
-      const { data } = await cloudidentity.policies.create({
-        requestBody: {
-          customer: `customers/${config.googleCustomerId}`,
-          policyQuery: {
-            orgUnit: `orgUnits/${orgUnitId}`
-          },
-          setting: {
-            type: "settings/rule.dlp",
-            value: {
-              displayName,
-              state: "ACTIVE",
-              triggers: [plan.trigger],
-              ruleTypeMetadata: {
-                dlpRuleMetadata: {
-                  alertSeverity: "LOW"
-                }
-              },
-              condition: {
-                contentCondition: plan.contentCondition
-              },
-              action: {
-                alertCenterAction: {},
-                gmailAction: {
-                  blockContent: {
-                    actionParams: {
-                      applyInternalMessages: plan.applyInternalMessages,
-                      applyExternalMessages: plan.applyExternalMessages
-                    }
+      const requestBody = {
+        customer: `customers/${config.googleCustomerId}`,
+        policyQuery: {
+          orgUnit: `orgUnits/${orgUnitId}`
+        },
+        setting: {
+          type: "settings/rule.dlp",
+          value: {
+            displayName,
+            state: "ACTIVE",
+            triggers: [plan.trigger],
+            ruleTypeMetadata: {
+              dlpRuleMetadata: {
+                alertSeverity: "LOW"
+              }
+            },
+            condition: {
+              contentCondition: plan.contentCondition
+            },
+            action: {
+              alertCenterAction: {},
+              gmailAction: {
+                blockContent: {
+                  actionParams: {
+                    applyInternalMessages: plan.applyInternalMessages,
+                    applyExternalMessages: plan.applyExternalMessages
                   }
                 }
               }
             }
           }
         }
-      });
+      };
+      // Temporary diagnostic logging: prints the exact outgoing request so
+      // a rejection can be compared directly against a known-good manual
+      // test, instead of guessing at what might differ. Safe to leave in -
+      // it never logs tokens/credentials, only the rule body itself
+      // (org unit ID and the addresses being blocked).
+      console.log("Live DLP policy create request:", JSON.stringify(requestBody, null, 2));
+      const { data } = await cloudidentity.policies.create({ requestBody });
       const result = unwrapCreateResult(data);
       created.push(result.policyName);
       if (result.pending) pendingAny = true;
