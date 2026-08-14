@@ -7,12 +7,11 @@
 > compliance changes. See [`NOTICE.md`](./NOTICE.md) for details on what was and wasn't verified.
 
 An internal web app so IT staff can create Google Workspace compliance rules without hunting through the
-Admin console menus: sign in with a Google Workspace admin account, pick an org unit, and generate
+Admin console menus: sign in with a Google Workspace admin account, and generate
 
-1. a **Gmail rule** blocking mail internal&rarr;internal, internal&rarr;external, or external&rarr;internal, and/or
-2. a **Drive trust rule** blocking (or limiting) sharing files outside your organization,
-
-both scoped to a specific OU.
+1. a **Gmail rule** blocking mail from a specific address, to a specific address, or between two specific
+   addresses - internal or external, in any combination Google Workspace can actually see, and/or
+2. a **Drive trust rule** blocking (or limiting) sharing files outside your organization, scoped to an org unit.
 
 ## Read this first: what's actually automated
 
@@ -37,17 +36,18 @@ it's more limited than the Admin console UI itself:
 flow (no API exists for it at all). The Gmail rule defaults to the same guided manual flow, but can optionally
 create the rule live via the `ENABLE_LIVE_DLP_API` flag (`server/.env`) - the app fills in every value and
 calls Google directly, falling back automatically to the manual flow if the live call fails for any reason.
-Every field in the request (org unit, direction, the block action, and the required rule metadata) was
-confirmed against this district's real tenant on 2026-08-14 - not guessed - by creating and reading back real
-test rules through OAuth Playground. One notable finding along the way: this API rejects a tautological/empty
-match condition outright (it requires a genuine, non-empty content condition, being a *Data Loss Prevention*
-API at heart), so a direction-only block uses `all_headers.contains('@')` as a practical "match essentially all
-real mail" condition, since every email's headers contain an address with an `@` in it. See the comment at the
-top of `server/src/services/policyService.ts` for the full confirmed schema and the reasoning behind that
-condition. Also confirmed: this API has no duplicate protection - an identical request sent twice creates two
-separate active rules, not an error. Recommend testing the flag against a low-stakes OU for each direction and
-confirming the resulting rule in the Admin console (Security &rarr; Data protection &rarr; Rules) before
-turning it on for real OUs.
+Every field in the request (org unit, block action, address-matching condition, and the required rule metadata)
+was confirmed against this district's real tenant on 2026-08-14 - not guessed - by creating and reading back
+real test rules through OAuth Playground. The wizard takes a sender address, a recipient address, or both
+(leave one blank to mean "anyone") and turns that into a genuine `all_headers.contains('the-address')` content
+condition - this API is a *Data Loss Prevention* API at heart and rejects a tautological/empty match condition
+outright, so real address matching turns out to be exactly what it wants, not a workaround. Blocking everything
+*to* one internal address needs two separate Google rules under the hood (mail can arrive from an internal
+sender or an external one, and Gmail DLP triggers only cover one direction each) - the app creates both and
+rolls back automatically if only one succeeds, so you never end up with a half-applied block. Also confirmed:
+this API has no duplicate protection - an identical request sent twice creates two separate active rules, not
+an error. See the comment at the top of `server/src/services/policyService.ts` for the full confirmed schema.
+Recommend testing the flag against a low-stakes address pair before turning it on for real.
 
 A note on **GAM** (the popular open-source Workspace admin CLI): its changelog claims DLP create/update/delete
 support was added around the same time as Google's API update, but GAM's own command reference still only

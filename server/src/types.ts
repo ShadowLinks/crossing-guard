@@ -21,11 +21,11 @@ export interface OrgUnitNode {
   children: OrgUnitNode[];
 }
 
-export type MailDirection = "internal-internal" | "internal-external" | "external-internal";
-
 export interface GmailRuleRequest {
   orgUnitPath: string;
-  direction: MailDirection;
+  /** At least one of fromAddress/toAddress must be set. */
+  fromAddress?: string;
+  toAddress?: string;
   description?: string;
 }
 

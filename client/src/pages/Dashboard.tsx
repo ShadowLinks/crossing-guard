@@ -20,7 +20,7 @@ export default function Dashboard({ me }: { me: MeResponse }) {
       <div className="tile-grid">
         <Link to="/gmail-rule" className="tile">
           <h2>Block Gmail content</h2>
-          <p>Stop mail between two internal addresses, or between an internal address and an external one, in either direction.</p>
+          <p>Stop mail from a specific address, to a specific address, or between two specific addresses - internal or external.</p>
         </Link>
         <Link to="/trust-rule" className="tile">
           <h2>Restrict Google Drive sharing</h2>

@@ -17,43 +17,38 @@ export interface ManualSteps {
   steps: string[];
 }
 
-const DIRECTION_INFO: Record<
-  GmailRuleRequest["direction"],
-  { label: string; directionText: string; envelopeHint: string; messagesToAffect: string }
-> = {
-  "internal-internal": {
-    label: "internal-to-internal",
-    directionText: "email sent from one internal address to another internal address",
-    envelopeHint: "Set both the sender and recipient conditions to \"Internal\".",
-    messagesToAffect: "Internal - receiving (this covers mail that never leaves your domain)"
-  },
-  "internal-external": {
-    label: "internal-to-external",
-    directionText: "email sent from an internal address to an external (outside your domain) address",
-    envelopeHint: "Set the sender condition to \"Internal\" and the recipient condition to \"Not Internal\" (External).",
-    messagesToAffect: "Outbound"
-  },
-  "external-internal": {
-    label: "external-to-internal",
-    directionText: "email sent from an external (outside your domain) address to an internal address",
-    envelopeHint: "Set the sender condition to \"Not Internal\" (External) and the recipient condition to \"Internal\".",
-    messagesToAffect: "Inbound"
-  }
-};
-
 export function buildGmailComplianceManualSteps(req: GmailRuleRequest): ManualSteps {
-  const info = DIRECTION_INFO[req.direction];
+  const from = req.fromAddress?.trim();
+  const to = req.toAddress?.trim();
+
+  const addressText = from && to ? `"${from}" to "${to}"` : from ? `"${from}" to anyone` : `anyone to "${to}"`;
+
+  const envelopeSteps: string[] = [];
+  if (from) {
+    envelopeSteps.push(`add an "Envelope filter" (or "Metadata match" > Sender) condition matching exactly: ${from}`);
+  }
+  if (to) {
+    envelopeSteps.push(`add an "Envelope filter" (or "Metadata match" > Recipient) condition matching exactly: ${to}`);
+  }
+
+  // "Email messages to affect" needs to cover every direction the given
+  // address(es) could travel in, since the classic Content compliance UI
+  // (unlike the live DLP path) applies one rule to one direction setting
+  // at a time - if only one address is given, both directions may be
+  // relevant, so the admin may need two rules (noted below).
+  const messagesToAffect =
+    from && to
+      ? "Inbound, Outbound, and Internal - receiving (whichever matches how these two addresses relate to your domain - Admin console will only show the options that make sense once you've set the sender/recipient conditions above)"
+      : "Inbound, Outbound, and/or Internal - receiving as needed - you may need to save this as two rules (one for internal-to-internal traffic, one for traffic crossing your domain boundary) since a single Content compliance rule only covers one of Admin console's message-direction options at a time";
 
   return {
     consoleDeepLink: ADMIN_CONSOLE_LINKS.gmailCompliance,
-    summary: `Block ${info.directionText}, scoped to org unit "${req.orgUnitPath}".`,
+    summary: `Block mail from ${addressText}, scoped to org unit "${req.orgUnitPath}".`,
     steps: [
       `Open the Compliance page (link below) and select the org unit "${req.orgUnitPath}" in the left-hand OU tree.`,
-      'Click "Add another rule" under "Content compliance" and give it a clear name, e.g. ' +
-        `"Block ${info.label} mail - ${req.orgUnitPath}".`,
-      `Under Email messages to affect, choose ${info.messagesToAffect}.`,
-      `Under Add expressions, add an "Envelope filter" (or "Metadata match" > Sender/Recipient) condition. ${info.envelopeHint}`,
-      "Under Add expressions, add a Content match if you only want to block specific words/patterns, or leave it unset to match all mail on that route.",
+      `Click "Add another rule" under "Content compliance" and give it a clear name, e.g. "Block ${addressText}".`,
+      `Under Email messages to affect, choose: ${messagesToAffect}.`,
+      `Under Add expressions, ${envelopeSteps.join(", and ")}.`,
       'Under "If the above expressions match, do the following", choose "Reject message" (or "Modify message" > quarantine, if you prefer a review queue instead of an outright block).',
       "Save the rule, then use Admin console's built-in rule tester (top of the Compliance page) to confirm it fires only on the traffic you intended before it goes live.",
       req.description ? `Note for your records: ${req.description}` : "Note for your records: none provided."

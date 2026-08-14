@@ -17,7 +17,6 @@ export interface OrgUnitNode {
   children: OrgUnitNode[];
 }
 
-export type MailDirection = "internal-internal" | "internal-external" | "external-internal";
 export type TrustRuleScope = "block-all-external" | "allow-only-trusted-domains";
 
 export interface ManualSteps {
@@ -41,7 +40,7 @@ export interface AuditRecord {
 export interface RuleResult {
   outcome: "created-live" | "manual-required" | "failed";
   manual?: ManualSteps;
-  policyName?: string;
+  policyNames?: string[];
   record: AuditRecord;
   warning?: string;
 }
@@ -70,7 +69,7 @@ export const api = {
   logout: () => fetch("/auth/logout", { method: "POST", credentials: "same-origin" }),
   orgUnits: () => request<OrgUnitNode>("/api/orgunits"),
   history: () => request<AuditRecord[]>("/api/rules"),
-  createGmailRule: (payload: { orgUnitPath: string; direction: MailDirection; description?: string }) =>
+  createGmailRule: (payload: { orgUnitPath: string; fromAddress?: string; toAddress?: string; description?: string }) =>
     request<RuleResult>("/api/rules/gmail-compliance", {
       method: "POST",
       body: JSON.stringify(payload)

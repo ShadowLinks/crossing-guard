@@ -34,11 +34,13 @@ research into Google Workspace's public APIs.
   screenshot that happened to omit the option) was corrected after reading back a real block rule; several
   guessed CEL "match everything" conditions (`"true"`, `all_headers.matches('.*')`, `all_headers.contains('')`)
   were each rejected by Google with clear errors (two failed to parse, one parsed but was rejected as an empty
-  match) until testing confirmed this API requires a genuine, non-empty content condition and that
-  `all_headers.contains('@')` satisfies it while still matching virtually all real mail; and two fields
+  match) until testing confirmed this API requires a genuine, non-empty content condition; and two fields
   (`ruleTypeMetadata.dlpRuleMetadata.alertSeverity`, `action.alertCenterAction: {}`) turned out to be required,
-  not optional console defaults, discovered when omitting them produced a generic, unhelpful 400 error. Testing
-  also confirmed this API has no duplicate protection - sending the same request twice creates two separate
+  not optional console defaults, discovered when omitting them produced a generic, unhelpful 400 error. That
+  "genuine content condition" requirement turned out to fit this app's actual purpose well once the wizard was
+  changed (per district feedback) from a broad OU+direction picker to specific sender/recipient addresses - the
+  condition is now a real `all_headers.contains('the-address')` match, not a workaround. Testing also confirmed
+  this API has no duplicate protection - sending the same request twice creates two separate
   active rules. If the live call fails for any reason, the app automatically falls back to the guided
   manual/deep-link flow rather than leaving you stuck. The Drive trust rule has no write API at all and always
   goes through the manual flow. See the comment at the top of `server/src/services/policyService.ts` for the
@@ -54,8 +56,8 @@ research into Google Workspace's public APIs.
 ## Recommendation
 
 Before using this for real compliance changes: read through the code (it's a small, readable codebase — see
-the "Project layout" section in `README.md`), test both wizards against a low-stakes test OU in your own
-domain, and confirm the resulting Gmail/Drive settings in the Admin console match what you expected. If you
-turn on `ENABLE_LIVE_DLP_API`, do that testing with the flag on: create a rule against a throwaway OU for each
-of the three directions, and check each resulting rule in Admin console (Security &rarr; Data protection &rarr;
-Rules) shows the block action and internal/external scope you expected before trusting it on a real OU.
+the "Project layout" section in `README.md`), test both wizards against low-stakes test addresses/OUs in your
+own domain, and confirm the resulting Gmail/Drive settings in the Admin console match what you expected. If you
+turn on `ENABLE_LIVE_DLP_API`, do that testing with the flag on: try a from-only address, a to-only address, and
+a from-and-to pair, and check each resulting rule in Admin console (Security &rarr; Data protection &rarr;
+Rules) shows the block action and address condition you expected before trusting it on a real address.

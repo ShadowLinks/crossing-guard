@@ -6,6 +6,7 @@ import { buildGmailComplianceManualSteps, buildTrustRuleManualSteps, ADMIN_CONSO
 import { appendAuditRecord, listAuditRecords } from "../services/auditStore";
 import { getOrgUnitByPath } from "../services/directoryService";
 import { createLiveGmailDlpRule, LiveDlpApiError } from "../services/policyService";
+import { isLikelyEmailAddress } from "../services/emailUtil";
 import type { GmailRuleRequest, TrustRuleRequest } from "../types";
 
 export const rulesRouter = Router();
@@ -18,11 +19,23 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
   const user = req.session.user!;
   const body = req.body as GmailRuleRequest;
 
-  if (!body?.orgUnitPath || !body?.direction) {
-    return res.status(400).json({ error: "invalid_request", message: "orgUnitPath and direction are required." });
+  const fromAddress = body?.fromAddress?.trim() || undefined;
+  const toAddress = body?.toAddress?.trim() || undefined;
+
+  if (!body?.orgUnitPath) {
+    return res.status(400).json({ error: "invalid_request", message: "orgUnitPath is required." });
+  }
+  if (!fromAddress && !toAddress) {
+    return res.status(400).json({
+      error: "invalid_request",
+      message: "Enter at least one of a sender or recipient address."
+    });
+  }
+  if ((fromAddress && !isLikelyEmailAddress(fromAddress)) || (toAddress && !isLikelyEmailAddress(toAddress))) {
+    return res.status(400).json({ error: "invalid_request", message: "Addresses must look like a real email address." });
   }
 
-  const manual = buildGmailComplianceManualSteps(body);
+  const manual = buildGmailComplianceManualSteps({ ...body, fromAddress, toAddress });
 
   // Off by default (ENABLE_LIVE_DLP_API) - see config.ts and NOTICE.md.
   // When off, or if the live call fails for any reason, this always falls
@@ -43,11 +56,12 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
   try {
     const client = getAuthedClient(user);
     const orgUnit = await getOrgUnitByPath(client, body.orgUnitPath);
-    const result = await createLiveGmailDlpRule(client, body, orgUnit.orgUnitId);
+    const result = await createLiveGmailDlpRule(client, fromAddress, toAddress, orgUnit.orgUnitId);
 
+    const names = result.policyNames.join(", ");
     const detail = result.pending
-      ? `Google accepted the rule (${result.policyName}) but hadn't finished creating it yet as of this response - check Admin console > Security > Data protection > Rules in a minute to confirm it's Active.`
-      : `Created live Gmail DLP rule ${result.policyName}. Confirm the direction and action match what you expected under Admin console > Security > Data protection > Rules before relying on it.`;
+      ? `Google accepted the rule (${names}) but hadn't finished creating it yet as of this response - check Admin console > Security > Data protection > Rules in a minute to confirm it's Active.`
+      : `Created live Gmail DLP rule${result.policyNames.length > 1 ? "s" : ""} ${names}. Confirm the address(es) and direction match what you expected under Admin console > Security > Data protection > Rules before relying on it.`;
 
     const record = appendAuditRecord({
       kind: "gmail-compliance",
@@ -59,7 +73,7 @@ rulesRouter.post("/gmail-compliance", requireAdmin, async (req, res) => {
       consoleDeepLink: ADMIN_CONSOLE_LINKS.rulesPage
     });
 
-    return res.json({ outcome: "created-live", manual, record, policyName: result.policyName });
+    return res.json({ outcome: "created-live", manual, record, policyNames: result.policyNames });
   } catch (err: any) {
     const message = err instanceof LiveDlpApiError ? err.message : "Unexpected error calling Google.";
     const detail = err instanceof LiveDlpApiError ? err.detail : err?.message;
