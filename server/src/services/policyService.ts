@@ -94,14 +94,44 @@ export async function createLiveGmailDlpRule(
     });
     responseData = response.data;
   } catch (err) {
-    throw new LiveDlpApiError(
-      "The live Policy API call failed. This is expected if Google's beta schema has changed since this app " +
-        "was written, or if this account lacks the cloud-identity.policies scope/privilege. Falling back to the " +
-        "guided manual steps is recommended.",
-      err
-    );
+    throw new LiveDlpApiError(describeGoogleApiError(err), err);
   }
 
   const policyName = responseData?.name ?? responseData?.response?.name ?? "unknown (check Admin console to confirm)";
   return { policyName };
+}
+
+/**
+ * Pulls the actual status/message Google sent back out of a failed Gaxios
+ * request, instead of a generic "it failed" string. Google's error body on
+ * a 400/403/404 here almost always says exactly what's wrong (bad field
+ * name, missing privilege, wrong URL) - surfacing it is what lets you
+ * (or whoever's debugging this) fix the request schema in this file
+ * instead of guessing. This message is shown in the app's UI banner, saved
+ * to the audit log, and printed to the server log (see routes/rules.ts).
+ */
+function describeGoogleApiError(err: unknown): string {
+  const anyErr = err as any;
+  const status = anyErr?.response?.status ?? anyErr?.code;
+  const googleMessage =
+    anyErr?.response?.data?.error?.message ??
+    anyErr?.response?.data?.error ??
+    anyErr?.response?.statusText ??
+    anyErr?.message ??
+    "no further detail returned";
+
+  const hint =
+    status === 403
+      ? " (403 usually means the signed-in admin's role doesn't have the Cloud Identity policy management " +
+        "privilege, or the Cloud Identity API hasn't been enabled in your Google Cloud project - see README.md.)"
+      : status === 400
+        ? " (400 usually means the request body's field names/values don't match what Google currently expects - " +
+          "this endpoint is new and its schema in this file, server/src/services/policyService.ts, is a best-effort " +
+          "guess that needs correcting against Google's live reference.)"
+        : status === 404
+          ? " (404 usually means the endpoint URL or API version in this file is wrong or has moved.)"
+          : "";
+
+  return `Google rejected the live DLP rule request${status ? ` (HTTP ${status})` : ""}: ${googleMessage}.${hint} ` +
+    "Falling back to the guided manual steps below.";
 }

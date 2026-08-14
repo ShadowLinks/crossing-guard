@@ -25,14 +25,20 @@ wildcard certificate, and `ufw` is Ubuntu's firewall tool.
 
 ## 2. Install Node.js
 
-This app is not preinstalled with Node - add NodeSource's repository and install Node 20 LTS:
+This app is not preinstalled with Node - add NodeSource's repository and install Node 24 LTS:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-node -v   # should print v20.x.x
-npm -v    # should print 10.x.x
+node -v   # should print v24.x.x
+npm -v    # should print 10.x.x or 11.x.x
 ```
+
+**Node 22 or newer is required** - Google's own client libraries (`google-auth-library` and its
+`gcp-metadata` dependency) require it as of the versions this app currently pins. If you already have an
+older Node installed and `npm install` prints `EBADENGINE` warnings mentioning `google-auth-library` or
+`gcp-metadata`, that's this requirement - reinstall Node using the command above rather than ignoring the
+warning (it's a hard requirement for those two packages, not just a suggestion).
 
 ## 3. Create a dedicated service account
 
@@ -222,7 +228,7 @@ specifically: `sudo -u complianceapp git config --global --add safe.directory /o
 ## Option B: quick local test (no server, no SSL, no nginx)
 
 Useful for trying the app out on your own Windows/Mac/Linux machine before deploying it for real. Requires
-Node.js 20+ installed locally (on Windows, install from https://nodejs.org).
+Node.js 22 or newer installed locally (on Windows, install from https://nodejs.org).
 
 ```bash
 npm install --workspaces
