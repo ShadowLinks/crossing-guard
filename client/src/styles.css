@@ -210,6 +210,37 @@ body {
   margin-top: 0;
 }
 
+.ou-search {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.ou-search input[type="text"] {
+  padding-right: 32px;
+}
+
+.ou-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.ou-search-clear:hover {
+  color: var(--ink);
+}
+
+.ou-no-results {
+  padding: 12px;
+}
+
 .ou-tree {
   max-height: 260px;
   overflow-y: auto;

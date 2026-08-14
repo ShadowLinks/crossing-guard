@@ -15,8 +15,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
-    "google-auth-library": "^9.15.0",
-    "googleapis": "^144.0.0"
+    "google-auth-library": "^11.0.2",
+    "googleapis": "^174.0.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
